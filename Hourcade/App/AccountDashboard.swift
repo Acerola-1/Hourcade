@@ -2,10 +2,11 @@ import SwiftUI
 import Security
 
 private enum DashboardPage: String, CaseIterable, Identifiable {
-    case steam, nintendo, playStation, studio
+    case overview, steam, nintendo, playStation, studio
     var id: Self { self }
     var title: String {
         switch self {
+        case .overview: "总览"
         case .steam: "Steam"
         case .nintendo: "Nintendo Switch"
         case .playStation: "PlayStation"
@@ -14,6 +15,7 @@ private enum DashboardPage: String, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
+        case .overview: "square.grid.2x2.fill"
         case .steam: "gamecontroller.fill"
         case .nintendo: "switch.2"
         case .playStation: "playstation.logo"
@@ -22,16 +24,67 @@ private enum DashboardPage: String, CaseIterable, Identifiable {
     }
 }
 
+struct AccountPlatformMark: View {
+    let platform: GamePlatform
+    var size: CGFloat = 34
+
+    private var asset: String {
+        switch platform {
+        case .steam: "SteamLogo"
+        case .nintendo: "NintendoSwitchLogo"
+        case .playStation: "PlayStationLogo"
+        }
+    }
+
+    private var color: Color {
+        switch platform {
+        case .steam: Color(red: 0.10, green: 0.24, blue: 0.36)
+        case .nintendo: Color(red: 0.89, green: 0.09, blue: 0.12)
+        case .playStation: Color(red: 0.02, green: 0.28, blue: 0.73)
+        }
+    }
+
+    var body: some View {
+        Image(asset)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size * 0.57, height: size * 0.57)
+            .frame(width: size, height: size)
+            .background(color, in: RoundedRectangle(cornerRadius: size * 0.24))
+            .accessibilityHidden(true)
+    }
+}
+
+enum DisplayFormat {
+    static func syncDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 HH:mm"
+        return formatter.string(from: date)
+    }
+}
+
 struct ContentView: View {
-    @State private var selection: DashboardPage? = .steam
+    @State private var selection: DashboardPage? = .overview
+    @State private var steamSnapshot: SteamSnapshot? = LocalSnapshotStore.load("steam")
+    @State private var nintendoSnapshot: NintendoSnapshot? = LocalSnapshotStore.load("nintendo")
+    @State private var psnSnapshot: PSNSnapshot? = LocalSnapshotStore.load("psn")
+    @State private var steamSyncing = false
+    @State private var steamError: String?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                Label(DashboardPage.overview.title, systemImage: DashboardPage.overview.symbol)
+                    .tag(DashboardPage.overview)
                 Section("平台账号") {
                     ForEach([DashboardPage.steam, .nintendo, .playStation]) { page in
-                        Label(page.title, systemImage: page.symbol).tag(page)
+                        HStack(spacing: 10) {
+                            AccountPlatformMark(platform: page.platform!, size: 27)
+                            Text(page.title)
+                        }
+                        .tag(page)
                     }
                 }
                 Section("设计") {
@@ -42,10 +95,43 @@ struct ContentView: View {
             .navigationTitle("Hourcade")
             .navigationSplitViewColumnWidth(min: 210, ideal: 238)
         } detail: {
-            switch selection ?? .steam {
-            case .steam: SteamSettingsView()
-            case .nintendo: NintendoSettingsView()
-            case .playStation: PSNSettingsView()
+            switch selection ?? .overview {
+            case .overview:
+                OverviewView(
+                    steam: steamSnapshot,
+                    nintendo: nintendoSnapshot,
+                    playStation: psnSnapshot,
+                    steamConfigured: KeychainSecret.read("steam.apiKey") != nil,
+                    isRefreshing: steamSyncing,
+                    refreshError: steamError,
+                    selectPlatform: { platform in
+                        switch platform {
+                        case .steam: selection = .steam
+                        case .nintendo: selection = .nintendo
+                        case .playStation: selection = .playStation
+                        }
+                    },
+                    refreshSteam: { Task { await autoRefreshSteam() } }
+                )
+            case .steam:
+                SteamSettingsView(
+                    snapshot: steamSnapshot,
+                    isRefreshing: steamSyncing,
+                    syncError: steamError,
+                    onSync: syncSteam
+                )
+            case .nintendo:
+                NintendoSettingsView(snapshot: nintendoSnapshot) { games in
+                    let newSnapshot = NintendoSnapshot(games: games, syncedAt: .now)
+                    try LocalSnapshotStore.save(newSnapshot, as: "nintendo")
+                    nintendoSnapshot = newSnapshot
+                }
+            case .playStation:
+                PSNSettingsView(snapshot: psnSnapshot) { library in
+                    let newSnapshot = PSNSnapshot(library: library, syncedAt: .now)
+                    try LocalSnapshotStore.save(newSnapshot, as: "psn")
+                    psnSnapshot = newSnapshot
+                }
             case .studio:
                 ContentUnavailableView {
                     Label("组件设计稿", systemImage: "square.grid.2x2")
@@ -57,6 +143,54 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 610)
+        .task { await autoRefreshSteam() }
+    }
+
+    @MainActor
+    private func autoRefreshSteam() async {
+        guard let account = UserDefaults.standard.string(forKey: "steam.account"),
+              !account.isEmpty, let key = KeychainSecret.read("steam.apiKey")
+        else { return }
+        _ = await syncSteam(account, key)
+    }
+
+    @MainActor
+    private func syncSteam(_ account: String, _ enteredKey: String) async -> Bool {
+        guard !steamSyncing else { return false }
+        steamSyncing = true
+        steamError = nil
+        defer { steamSyncing = false }
+        let key = enteredKey.isEmpty ? KeychainSecret.read("steam.apiKey") : enteredKey
+        guard let key, !key.isEmpty else {
+            steamError = "请输入 Web API Key"
+            return false
+        }
+        do {
+            let library = try await SteamAPI.load(account: account, key: key)
+            let newSnapshot = SteamSnapshot(library: library, syncedAt: .now)
+            if !enteredKey.isEmpty { try KeychainSecret.save(enteredKey, for: "steam.apiKey") }
+            try LocalSnapshotStore.save(newSnapshot, as: "steam")
+            UserDefaults.standard.set(account.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "steam.account")
+            steamSnapshot = newSnapshot
+            if library.games.isEmpty {
+                steamError = "Steam 没有返回游戏。请检查个人资料的“游戏详情”隐私设置；改为公开会让其他人也能查看相关游戏信息"
+            }
+            return true
+        } catch {
+            steamError = error.localizedDescription
+            return false
+        }
+    }
+}
+
+private extension DashboardPage {
+    var platform: GamePlatform? {
+        switch self {
+        case .steam: .steam
+        case .nintendo: .nintendo
+        case .playStation: .playStation
+        default: nil
+        }
     }
 }
 
@@ -104,146 +238,181 @@ private struct SettingsPanel<Content: View>: View {
 private struct SteamSettingsView: View {
     @State private var account = UserDefaults.standard.string(forKey: "steam.account") ?? ""
     @State private var apiKey = ""
-    @State private var result: SteamLibrary?
-    @State private var message = "尚未同步"
-    @State private var isLoading = false
+    @State private var isEditing = KeychainSecret.read("steam.apiKey") == nil
+
+    let snapshot: SteamSnapshot?
+    let isRefreshing: Bool
+    let syncError: String?
+    let onSync: (String, String) async -> Bool
+
+    private var hasConnection: Bool {
+        !account.isEmpty && KeychainSecret.read("steam.apiKey") != nil
+    }
 
     var body: some View {
-        PageShell(eyebrow: "官方 Web API", title: "Steam", subtitle: "连接游戏库，读取累计与近两周游玩时长。") {
-            SettingsPanel(title: "账号连接") {
-                LabeledContent("SteamID 或个人资料链接") {
-                    TextField("17 位 SteamID、/profiles/… 或 /id/…", text: $account)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 390)
-                }
-                LabeledContent("Web API Key") {
-                    SecureField(KeychainSecret.read("steam.apiKey") == nil ? "输入你的 API Key" : "已保存在钥匙串；留空沿用", text: $apiKey)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 390)
-                }
-                HStack(spacing: 12) {
-                    Button(isLoading ? "同步中…" : "保存并同步") {
-                        Task { await sync() }
+        PageShell(eyebrow: "平台连接", title: "Steam", subtitle: "连接你的 Steam 账号，游玩数据会显示在总览。") {
+            if hasConnection && !isEditing {
+                SettingsPanel(title: "已连接的账号") {
+                    HStack(spacing: 14) {
+                        AccountPlatformMark(platform: .steam, size: 44)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(account).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Label("API Key 已保存在本机钥匙串", systemImage: "checkmark.shield")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
-                    .disabled(isLoading || account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    if isLoading { ProgressView().controlSize(.small) }
-                    Text(message).font(.caption).foregroundStyle(.secondary)
-                }
-                Text("密钥只保存在本机钥匙串。游戏库需允许接口读取；私密资料可能返回空列表。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if let result {
-                SettingsPanel(title: "最近一次同步") {
-                    HStack(spacing: 34) {
-                        metric("游戏数", "\(result.games.count)")
-                        metric("累计游玩", hours(result.totalMinutes))
-                        metric("近两周", hours(result.fortnightMinutes))
+                    Divider()
+                    HStack {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundStyle(.secondary)
+                        Text("最近同步")
+                        Spacer()
+                        Text(snapshot.map { DisplayFormat.syncDate($0.syncedAt) } ?? "尚未同步")
+                            .foregroundStyle(.secondary)
                     }
-                    if !result.games.isEmpty {
-                        Divider()
-                        Text("最近玩的游戏").font(.subheadline.weight(.semibold))
-                        ForEach(result.recent.prefix(5)) { game in
-                            HStack {
-                                Text(game.name)
-                                Spacer()
-                                Text(hours(game.fortnightMinutes)).foregroundStyle(.secondary)
+                    .font(.subheadline)
+                    if let syncError {
+                        Label(syncError, systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    HStack {
+                        Button("立即同步") { Task { _ = await onSync(account, "") } }
+                            .disabled(isRefreshing)
+                        if isRefreshing { ProgressView().controlSize(.small) }
+                        Spacer()
+                        Button("更换账号或密钥") { isEditing = true }
+                    }
+                }
+                DisclosureGroup("查看连接说明") { connectionGuide }
+                    .padding(.horizontal, 4)
+            } else {
+                connectionGuide
+                SettingsPanel(title: "连接你的账号") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("个人资料链接").font(.subheadline.weight(.medium))
+                        TextField("粘贴你的 steamcommunity.com 个人主页地址", text: $account)
+                            .textFieldStyle(.roundedBorder)
+                        Text("例如 steamcommunity.com/id/你的名称；也支持 17 位 SteamID。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Web API Key").font(.subheadline.weight(.medium))
+                        SecureField(hasConnection ? "留空沿用已保存的密钥" : "粘贴从 Steam 官方页面取得的密钥", text: $apiKey)
+                            .textFieldStyle(.roundedBorder)
+                        Text("只用于向 Steam 请求你的游戏记录，保存在本机钥匙串。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let syncError {
+                        Label(syncError, systemImage: "exclamationmark.triangle")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                    HStack {
+                        Button(isRefreshing ? "连接中…" : "连接并同步") {
+                            Task {
+                                if await onSync(account.trimmingCharacters(in: .whitespacesAndNewlines), apiKey.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                                    apiKey = ""
+                                    isEditing = false
+                                }
                             }
-                            .font(.subheadline)
+                        }
+                        .disabled(isRefreshing || account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if isRefreshing { ProgressView().controlSize(.small) }
+                        if hasConnection {
+                            Button("取消") { apiKey = ""; isEditing = false }
                         }
                     }
                 }
             }
-            SettingsPanel(title: "数据口径") {
-                Text("Steam 返回已拥有游戏的累计时长和近期游玩的近两周时长。游戏数是接口返回的库条目数；当前标价合计不在此接口内。")
-                    .foregroundStyle(.secondary)
+        }
+    }
+
+    private var connectionGuide: some View {
+        SettingsPanel(title: "首次连接 · 两步完成") {
+            HStack(alignment: .top, spacing: 12) {
+                stepNumber("1")
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("复制个人资料地址").font(.subheadline.weight(.semibold))
+                    Text("在 Steam 客户端打开自己的个人资料，复制页面地址。你也可以在浏览器打开 Steam 社区个人主页。")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
             }
+            HStack(alignment: .top, spacing: 12) {
+                stepNumber("2")
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("获取 Web API Key").font(.subheadline.weight(.semibold))
+                    Text("Steam 客户端内没有密钥入口。请在浏览器登录 Steam 官方密钥页面，查看或申请密钥，再复制到下方。")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Link("打开 Steam 官方密钥页面 ↗", destination: URL(string: "https://steamcommunity.com/dev/apikey")!)
+                        .font(.subheadline)
+                }
+            }
+            Text("这是当前测试版的接入方式。Web API Key 属于开发者凭据，正式版还需改进授权流程。请勿把密钥发给他人。")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private func metric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(value).font(.title2.bold().monospacedDigit())
-            Text(label).font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    private func hours(_ minutes: Int) -> String {
-        "\(minutes / 60)h \(minutes % 60)m"
-    }
-
-    @MainActor
-    private func sync() async {
-        isLoading = true
-        defer { isLoading = false }
-        let enteredKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = enteredKey.isEmpty ? KeychainSecret.read("steam.apiKey") : enteredKey
-        guard let key, !key.isEmpty else {
-            message = "请输入 Steam Web API Key"
-            return
-        }
-        do {
-            let library = try await SteamAPI.load(account: account, key: key)
-            if !enteredKey.isEmpty { try KeychainSecret.save(enteredKey, for: "steam.apiKey"); apiKey = "" }
-            UserDefaults.standard.set(account.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "steam.account")
-            result = library
-            message = library.games.isEmpty ? "接口没有返回游戏；请检查游戏详情隐私设置" : "同步成功 · \(Date.now.formatted(date: .abbreviated, time: .shortened))"
-        } catch {
-            message = error.localizedDescription
-        }
+    private func stepNumber(_ value: String) -> some View {
+        Text(value)
+            .font(.caption.bold().monospacedDigit())
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .background(Color.blue, in: Circle())
     }
 }
 
 private struct NintendoSettingsView: View {
     @State private var executablePath = UserDefaults.standard.string(forKey: "nintendo.nxapiPath") ?? ""
-    @State private var games: [NintendoGame]?
     @State private var status = "尚未同步"
     @State private var isLoading = false
+    let snapshot: NintendoSnapshot?
+    let onSynced: ([NintendoGame]) throws -> Void
 
     var body: some View {
-        PageShell(eyebrow: "nxapi · 实验性连接", title: "Nintendo Switch", subtitle: "使用已登录的 nxapi 读取 Nintendo Switch Online 游玩记录。") {
-            SettingsPanel(title: "本机接入") {
-                LabeledContent("nxapi 可执行文件") {
-                    TextField("例如 /opt/homebrew/bin/nxapi", text: $executablePath)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 390)
-                }
-                HStack(spacing: 12) {
-                    Button(isLoading ? "同步中…" : "读取游玩记录") { Task { await sync() } }
-                        .disabled(isLoading || executablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    if isLoading { ProgressView().controlSize(.small) }
-                    Text(status).font(.caption).foregroundStyle(.secondary)
-                }
-                Text("先安装 nxapi，并在终端执行 nxapi nso auth，通过 Nintendo 登录页完成授权。Hourcade 调用本机 nxapi nso play-activity --json，不接收 Nintendo 密码。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Link("查看 nxapi 项目与安装说明", destination: URL(string: "https://github.com/samuelthomas2774/nxapi")!)
-            }
-            if let games {
-                SettingsPanel(title: "最近一次同步") {
-                    HStack(spacing: 30) {
-                        VStack(alignment: .leading) {
-                            Text("\(games.count)").font(.title2.bold().monospacedDigit())
-                            Text("游玩记录").font(.caption).foregroundStyle(.secondary)
-                        }
-                        VStack(alignment: .leading) {
-                            Text("\(games.reduce(0) { $0 + $1.totalPlayTime } / 60)h").font(.title2.bold().monospacedDigit())
-                            Text("累计时长").font(.caption).foregroundStyle(.secondary)
-                        }
+        PageShell(eyebrow: "平台连接", title: "Nintendo Switch", subtitle: "Nintendo 账号接入正在开发。") {
+            SettingsPanel(title: snapshot == nil ? "Nintendo 账号" : "已连接的账号") {
+                HStack(spacing: 13) {
+                    AccountPlatformMark(platform: .nintendo, size: 44)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(snapshot == nil ? "尚未连接" : "Nintendo Switch")
+                            .font(.subheadline.weight(.semibold))
+                        Text(snapshot == nil ? "应用内登录尚在适配" : "游玩记录已保存到本机")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
+                }
+                if let snapshot {
                     Divider()
-                    ForEach(games.prefix(5)) { game in
-                        HStack {
-                            Text(game.name)
-                            Spacer()
-                            Text("\(game.totalPlayTime / 60)h").foregroundStyle(.secondary)
-                        }
-                        .font(.subheadline)
+                    HStack {
+                        Text("最近同步")
+                        Spacer()
+                        Text(DisplayFormat.syncDate(snapshot.syncedAt))
+                            .foregroundStyle(.secondary)
                     }
+                    .font(.subheadline)
                 }
             }
-            SettingsPanel(title: "数据口径") {
-                Text("NSO PlayLog 提供游戏名称、封面、累计时长和首次游玩时间。它没有近 14 天逐游戏时长；若要准确计算，需另接家长控制每日摘要。nxapi 调用非公开接口，认证默认依赖第三方辅助服务。")
+            SettingsPanel(title: "连接进度") {
+                Text("目前还不能直接在 Hourcade 内登录 Nintendo 账号。连接方式完成后，你的游玩记录会显示在总览。")
                     .foregroundStyle(.secondary)
+                Text("这里暂时不需要你安装工具或输入密码。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
+            DisclosureGroup("已有 nxapi 的用户 · 实验性连接") {
+                SettingsPanel(title: "读取现有 nxapi 会话") {
+                    TextField("nxapi 可执行文件的绝对路径", text: $executablePath)
+                        .textFieldStyle(.roundedBorder)
+                    HStack(spacing: 12) {
+                        Button(isLoading ? "同步中…" : "读取游玩记录") { Task { await sync() } }
+                            .disabled(isLoading || executablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if isLoading { ProgressView().controlSize(.small) }
+                    }
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                    Text("此入口只供已经自行安装并登录 nxapi 的用户使用。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("它调用 Nintendo 的非公开接口，认证默认依赖额外服务，可能随时失效。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 4)
         }
     }
 
@@ -254,7 +423,7 @@ private struct NintendoSettingsView: View {
         do {
             let result = try await NintendoCLI.load(executablePath: executablePath)
             UserDefaults.standard.set(executablePath.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "nintendo.nxapiPath")
-            games = result
+            try onSynced(result)
             status = "同步成功 · \(Date.now.formatted(date: .abbreviated, time: .shortened))"
         } catch {
             status = error.localizedDescription
@@ -265,77 +434,86 @@ private struct NintendoSettingsView: View {
 private struct PSNSettingsView: View {
     @State private var onlineID = UserDefaults.standard.string(forKey: "psn.onlineID") ?? ""
     @State private var npsso = ""
-    @State private var library: PSNLibrary?
-    @State private var status = "尚未同步"
+    @State private var status: String?
     @State private var isLoading = false
+    let snapshot: PSNSnapshot?
+    let onSynced: (PSNLibrary) throws -> Void
+
+    private var hasSavedSession: Bool { KeychainSecret.read("psn.refreshToken") != nil }
 
     var body: some View {
-        PageShell(eyebrow: "非公开接口 · 实验性连接", title: "PlayStation", subtitle: "读取已玩游戏及累计时长；需要 PSN 登录会话。") {
-            SettingsPanel(title: "账号连接") {
-                LabeledContent("PSN Online ID") {
-                    TextField("你的 PSN ID", text: $onlineID)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 390)
+        PageShell(eyebrow: "平台连接", title: "PlayStation", subtitle: "使用你的 PlayStation 账号连接游玩记录。") {
+            SettingsPanel(title: snapshot == nil ? "连接账号" : "已连接的账号") {
+                HStack(spacing: 13) {
+                    AccountPlatformMark(platform: .playStation, size: 44)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(onlineID.isEmpty ? "PlayStation Network" : onlineID)
+                            .font(.subheadline.weight(.semibold))
+                        Text(hasSavedSession ? "登录凭据已保存在本机钥匙串" : "需要登录 PlayStation 账号")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                LabeledContent("NPSSO 会话令牌") {
-                    SecureField(KeychainSecret.read("psn.refreshToken") == nil ? "从 Sony 登录会话获取" : "已有刷新令牌；留空沿用", text: $npsso)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 390)
+                if let snapshot, hasSavedSession {
+                    HStack {
+                        Text("最近同步")
+                        Spacer()
+                        Text(DisplayFormat.syncDate(snapshot.syncedAt))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline)
                 }
-                HStack(spacing: 12) {
-                    Button(isLoading ? "同步中…" : "连接并同步") { Task { await sync() } }
-                        .disabled(isLoading || onlineID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Divider()
+                TextField("你的 PSN Online ID", text: $onlineID)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 350)
+                HStack(spacing: 10) {
+                    Button(isLoading ? "连接中…" : hasSavedSession ? "立即同步" : "使用 PlayStation 账号登录") {
+                        Task { await connect(useBrowser: !hasSavedSession) }
+                    }
+                    .disabled(isLoading || onlineID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if hasSavedSession {
+                        Button("重新登录") { Task { await connect(useBrowser: true) } }
+                            .disabled(isLoading)
+                    }
                     if isLoading { ProgressView().controlSize(.small) }
+                }
+                if let status {
                     Text(status).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("NPSSO 与密码同等敏感。仅在内存中用于向 Sony 换取访问令牌；本机钥匙串只保存刷新令牌。此连接依赖逆向接口，可能失效。")
+                Text("登录窗口由系统打开，Hourcade 不接收你的密码。此连接仍在测试，服务变更可能导致失败。")
                     .font(.caption).foregroundStyle(.secondary)
-                Link("查看获取 NPSSO 的开源项目说明", destination: URL(string: "https://github.com/achievements-app/psn-api/blob/main/website/docs/authentication/authenticating-manually.md")!)
             }
-            if let library {
-                SettingsPanel(title: "最近一次同步") {
-                    HStack(spacing: 30) {
-                        VStack(alignment: .leading) {
-                            Text("\(library.games.count)").font(.title2.bold().monospacedDigit())
-                            Text("已玩游戏").font(.caption).foregroundStyle(.secondary)
-                        }
-                        VStack(alignment: .leading) {
-                            Text("\(library.totalMinutes / 60)h").font(.title2.bold().monospacedDigit())
-                            Text("累计时长").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Divider()
-                    ForEach(library.games.prefix(5)) { game in
-                        HStack {
-                            Text(game.name)
-                            Spacer()
-                            Text("\(game.lifetimeMinutes / 60)h").foregroundStyle(.secondary)
-                        }
-                        .font(.subheadline)
-                    }
+            DisclosureGroup("登录遇到问题？高级接入方式") {
+                SettingsPanel(title: "使用现有 PSN 会话") {
+                    SecureField("NPSSO 会话令牌", text: $npsso)
+                        .textFieldStyle(.roundedBorder)
+                    Button("使用会话令牌同步") { Task { await connect(useBrowser: false, useNPSSO: true) } }
+                        .disabled(isLoading || npsso.isEmpty || onlineID.isEmpty)
+                    Text("NPSSO 与密码同等敏感；仅用于向 Sony 换取访问令牌。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            SettingsPanel(title: "数据口径") {
-                Text("开源 psn-api 使用已认证会话搜索 Online ID，再读取 played games。该列表代表已玩游戏，不等同于拥有的游戏库。接口只给累计时长；近 14 天需持续记录快照后计算。")
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.horizontal, 4)
         }
     }
 
     @MainActor
-    private func sync() async {
+    private func connect(useBrowser: Bool, useNPSSO: Bool = false) async {
         isLoading = true
         defer { isLoading = false; npsso = "" }
-        let entered = npsso.trimmingCharacters(in: .whitespacesAndNewlines)
+        status = nil
         do {
+            let code = useBrowser ? try await PSNWebLogin.shared.authorize() : nil
+            let entered = npsso.trimmingCharacters(in: .whitespacesAndNewlines)
             let (result, refresh) = try await PSNAPI.load(
                 onlineID: onlineID.trimmingCharacters(in: .whitespacesAndNewlines),
-                npsso: entered.isEmpty ? nil : entered,
-                savedRefreshToken: KeychainSecret.read("psn.refreshToken")
+                npsso: useNPSSO ? entered : nil,
+                savedRefreshToken: KeychainSecret.read("psn.refreshToken"),
+                accessCode: code
             )
             if let refresh { try KeychainSecret.save(refresh, for: "psn.refreshToken") }
             UserDefaults.standard.set(onlineID.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "psn.onlineID")
-            library = result
+            try onSynced(result)
             status = "同步成功 · \(Date.now.formatted(date: .abbreviated, time: .shortened))"
         } catch {
             status = error.localizedDescription

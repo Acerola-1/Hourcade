@@ -1,15 +1,20 @@
 import Foundation
 
-struct PSNGame: Identifiable, Sendable {
+struct PSNGame: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     let lifetimeMinutes: Int
     let lastPlayed: String?
 }
 
-struct PSNLibrary: Sendable {
+struct PSNLibrary: Codable, Sendable {
     let games: [PSNGame]
     var totalMinutes: Int { games.reduce(0) { $0 + $1.lifetimeMinutes } }
+}
+
+struct PSNSnapshot: Codable, Sendable {
+    let library: PSNLibrary
+    let syncedAt: Date
 }
 
 enum PSNAPI {
@@ -17,6 +22,18 @@ enum PSNAPI {
     private static let clientID = "09515159-7237-4370-9b40-3806e67c0891"
     private static let redirectURI = "com.scee.psxandroid.scecompcall://redirect"
     private static let basic = "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A="
+
+    static var authorizationURL: URL {
+        var components = URLComponents(string: authBase + "/authorize")!
+        components.queryItems = [
+            URLQueryItem(name: "access_type", value: "offline"),
+            URLQueryItem(name: "client_id", value: clientID),
+            URLQueryItem(name: "redirect_uri", value: redirectURI),
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "scope", value: "psn:mobile.v2.core psn:clientapp")
+        ]
+        return components.url!
+    }
 
     private struct Tokens: Decodable, Sendable {
         let access_token: String
@@ -46,10 +63,17 @@ enum PSNAPI {
         let lastPlayedDateTime: String?
     }
 
-    static func load(onlineID: String, npsso: String?, savedRefreshToken: String?) async throws -> (PSNLibrary, String?) {
+    static func load(onlineID: String, npsso: String?, savedRefreshToken: String?, accessCode: String? = nil) async throws -> (PSNLibrary, String?) {
         let tokens: Tokens
-        if let npsso, !npsso.isEmpty {
-            let code = try await accessCode(npsso)
+        if let accessCode {
+            tokens = try await token(parameters: [
+                "code": accessCode,
+                "redirect_uri": redirectURI,
+                "grant_type": "authorization_code",
+                "token_format": "jwt"
+            ])
+        } else if let npsso, !npsso.isEmpty {
+            let code = try await Self.accessCode(npsso)
             tokens = try await token(parameters: [
                 "code": code,
                 "redirect_uri": redirectURI,

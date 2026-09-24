@@ -1,6 +1,6 @@
 import Foundation
 
-struct NintendoGame: Decodable, Identifiable, Sendable {
+struct NintendoGame: Codable, Identifiable, Sendable {
     let name: String
     let imageUri: String
     let shopUri: String
@@ -8,6 +8,12 @@ struct NintendoGame: Decodable, Identifiable, Sendable {
     let firstPlayedAt: Int
 
     var id: String { shopUri.isEmpty ? name : shopUri }
+}
+
+struct NintendoSnapshot: Codable, Sendable {
+    let games: [NintendoGame]
+    let syncedAt: Date
+    var totalMinutes: Int { games.reduce(0) { $0 + $1.totalPlayTime } }
 }
 
 enum NintendoCLI {

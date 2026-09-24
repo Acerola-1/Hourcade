@@ -1,18 +1,41 @@
 import Foundation
 
-struct SteamGame: Identifiable, Sendable {
+struct SteamGame: Identifiable, Codable, Sendable {
     let id: Int
     let name: String
     let lifetimeMinutes: Int
     let fortnightMinutes: Int
 }
 
-struct SteamLibrary: Sendable {
+struct SteamLibrary: Codable, Sendable {
     let games: [SteamGame]
     let recent: [SteamGame]
 
     var totalMinutes: Int { games.reduce(0) { $0 + $1.lifetimeMinutes } }
     var fortnightMinutes: Int { recent.reduce(0) { $0 + $1.fortnightMinutes } }
+}
+
+struct SteamSnapshot: Codable, Sendable {
+    let library: SteamLibrary
+    let syncedAt: Date
+}
+
+enum LocalSnapshotStore {
+    private static func file(_ name: String) -> URL? {
+        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        return base.appending(path: "Hourcade", directoryHint: .isDirectory).appending(path: name + ".json")
+    }
+
+    static func load<T: Decodable>(_ name: String) -> T? {
+        guard let url = file(name), let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    static func save<T: Encodable>(_ value: T, as name: String) throws {
+        guard let url = file(name) else { throw CocoaError(.fileNoSuchFile) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(value).write(to: url, options: .atomic)
+    }
 }
 
 enum SteamAPI {
