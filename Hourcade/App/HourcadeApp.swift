@@ -7,5 +7,10 @@ struct HourcadeApp: App {
             ContentView()
         }
         .defaultSize(width: 1040, height: 760)
+
+        Window("组件预览", id: "widget-studio") {
+            WidgetStudioView()
+        }
+        .defaultSize(width: 1040, height: 760)
     }
 }

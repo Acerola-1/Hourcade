@@ -17,6 +17,10 @@
 		000000000000000000000028 = {isa = PBXBuildFile; fileRef = 000000000000000000000018; };
 		000000000000000000000029 = {isa = PBXBuildFile; fileRef = 000000000000000000000018; };
 		00000000000000000000002A = {isa = PBXBuildFile; fileRef = 000000000000000000000019; };
+		00000000000000000000002B = {isa = PBXBuildFile; fileRef = 00000000000000000000001A; };
+		00000000000000000000002C = {isa = PBXBuildFile; fileRef = 00000000000000000000001B; };
+		00000000000000000000002D = {isa = PBXBuildFile; fileRef = 00000000000000000000001C; };
+		00000000000000000000002E = {isa = PBXBuildFile; fileRef = 00000000000000000000001D; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +56,10 @@
 		000000000000000000000017 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AggregateCards.swift; sourceTree = "<group>"; };
 		000000000000000000000018 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000019 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExplorationCards.swift; sourceTree = "<group>"; };
+		00000000000000000000001A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDashboard.swift; sourceTree = "<group>"; };
+		00000000000000000000001B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteamAPI.swift; sourceTree = "<group>"; };
+		00000000000000000000001C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PSNAPI.swift; sourceTree = "<group>"; };
+		00000000000000000000001D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NintendoCLI.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -79,7 +87,7 @@
 		};
 		000000000000000000000005 = {
 			isa = PBXGroup;
-			children = (000000000000000000000012, 000000000000000000000013, 000000000000000000000019, );
+			children = (000000000000000000000012, 000000000000000000000013, 000000000000000000000019, 00000000000000000000001A, 00000000000000000000001B, 00000000000000000000001C, 00000000000000000000001D, );
 			path = App;
 			sourceTree = "<group>";
 		};
@@ -165,7 +173,7 @@
 		000000000000000000000030 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (000000000000000000000020, 000000000000000000000021, 000000000000000000000022, 000000000000000000000026, 00000000000000000000002A, );
+			files = (000000000000000000000020, 000000000000000000000021, 000000000000000000000022, 000000000000000000000026, 00000000000000000000002A, 00000000000000000000002B, 00000000000000000000002C, 00000000000000000000002D, 00000000000000000000002E, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		000000000000000000000034 = {

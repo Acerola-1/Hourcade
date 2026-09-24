@@ -7,7 +7,7 @@ private enum PreviewMode: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
-struct ContentView: View {
+struct WidgetStudioView: View {
     @State private var selectedStyle: AggregateStyle = .hero
     @State private var previewMode: PreviewMode = .reference
     @State private var featuredGameID = GameSnapshot.demo.heroCandidates[0].id
