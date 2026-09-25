@@ -574,21 +574,46 @@ actor SteamPriceStore {
         return currency != nil ? (amount, currency) : nil
     }
 
-    /// 全量清扫：只补缺失或超过 24 小时的条目，每条请求间隔 1.6 秒。
-    func sweep(appIDs: [Int], cc: String) async {
+    /// 全量清扫：先扫国区（cc=CN，用户实际支付区，原生人民币），仍缺失的
+    /// 再用港服（cc=HK）补——很多游戏不在国区上架。条目磁盘缓存 24 小时。
+    func sweep(appIDs: [Int]) async {
         loadFromDisk()
-        let stale = appIDs.filter { appID in
+        var stale = appIDs.filter { appID in
             guard let entry = cache?[appID] else { return true }
             return Date().timeIntervalSince(entry.fetchedAt) > 86_400
         }
         guard !stale.isEmpty else { return }
-        for appID in stale {
-            if Task.isCancelled { return }
-            try? await Task.sleep(nanoseconds: 1_600_000_000)
+
+        var throttled = 0
+        // Pass 1: 国区
+        stale = await sweepPass(stale, cc: "CN", throttled: &throttled)
+        // Pass 2: 港区补缺
+        if !stale.isEmpty {
+            stale = await sweepPass(stale, cc: "HK", throttled: &throttled)
+        }
+        NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+    }
+
+    /// One regional pass over the given app IDs; returns the ids that came
+    /// back without a price (either throttled or genuinely unpriced there).
+    private func sweepPass(_ ids: [Int], cc: String, throttled: inout Int) async -> [Int] {
+        var missing: [Int] = []
+        for appID in ids {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            // 限流上限约 200 次/5 分钟（2.4s/次）；间隔 2.5s 留余量。
+            // 只有 HTTP 层异常（429/网络错）才算限流信号；success:false 是
+            // 正常响应"该游戏无价格"，不计入。
             guard var components = URLComponents(string: "https://store.steampowered.com/api/appdetails?appids=\(appID)&cc=\(cc)&filters=price_overview"),
                   let (data, response) = try? await URLSession.shared.data(from: components.url!),
-                  (response as? HTTPURLResponse)?.statusCode == 200,
-                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (response as? HTTPURLResponse)?.statusCode == 200
+            else {
+                throttled += 1
+                if throttled >= 6 { break }
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                missing.append(appID)
+                continue
+            }
+            guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let basic = payload.values
                       .compactMap({ $0 as? [String: Any] })
                       .first(where: { ($0["success"] as? Bool) == true })?["data"] as? [String: Any],
@@ -596,7 +621,10 @@ actor SteamPriceStore {
                   let currency = overview["currency"] as? String,
                   let initial = overview["initial"] as? Int,
                   let current = overview["final"] as? Int
-            else { continue }
+            else {
+                missing.append(appID)
+                continue
+            }
             cache?[appID] = SteamPriceEntry(
                 currency: currency,
                 initial: initial,
@@ -606,7 +634,7 @@ actor SteamPriceStore {
             )
             persist()
         }
-        NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+        return missing
     }
 
     private func loadFromDisk() {
@@ -636,7 +664,8 @@ actor ExchangeRateStore {
         guard from != to else { return 1 }
         let key = "\(from)|\(to)"
         if let rate = rates[key] { return rate }
-        if let (data, response) = try? await URLSession.shared.data(from: URL(string: "https://api.frankfurter.app/latest?from=\(from)&to=\(to)")!),
+        // er-api first: no redirects, covers HKD/CNY/USD reliably in testing.
+        if let (data, response) = try? await URLSession.shared.data(from: URL(string: "https://open.er-api.com/v6/latest/\(from)")!),
            (response as? HTTPURLResponse)?.statusCode == 200,
            let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let list = root["rates"] as? [String: Any],
@@ -644,8 +673,8 @@ actor ExchangeRateStore {
             rates[key] = value
             return value
         }
-        // Backup source with broader currency coverage.
-        if let (data, response) = try? await URLSession.shared.data(from: URL(string: "https://open.er-api.com/v6/latest/\(from)")!),
+        // ECB via frankfurter as the backup (URLSession follows its redirect).
+        if let (data, response) = try? await URLSession.shared.data(from: URL(string: "https://api.frankfurter.app/latest?from=\(from)&to=\(to)")!),
            (response as? HTTPURLResponse)?.statusCode == 200,
            let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let list = root["rates"] as? [String: Any],

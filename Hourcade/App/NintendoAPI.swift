@@ -372,6 +372,8 @@ actor NintendoPriceStore {
     private var mapFetchedAt: Date?
     private var cache: [String: NintendoPriceEntry]?
 
+    // 任天堂无港区公开 nsuid 数据源（nsuid 区域锁定，美区库 + country=HK
+    // 组合全部 not_found，已实测），故价格以美区美元价为准，展示时折算。
     private static let titledbURL = URL(string: "https://raw.githubusercontent.com/blawar/titledb/master/US.en.json")!
     private static let queryCountry = "US"
 
@@ -392,14 +394,18 @@ actor NintendoPriceStore {
 
     /// Cached sum only — never touches the network. Entries are US dollars;
     /// the caller converts to the display currency.
+    /// Sums only entries sharing one currency — mixing USD and JPY amounts
+    /// would produce a meaningless total. Entries in other currencies are
+    /// skipped (the store data is expected to be single-currency per sweep).
     func totalValue(titleIds: [String]) -> (amount: Double, currency: String?)? {
         loadPrices()
         var amount = 0.0
         var currency: String?
         for titleId in titleIds {
             guard let entry = cache?[titleId.lowercased()] else { continue }
+            if let currency, currency != entry.currency { continue }
+            currency = entry.currency
             amount += entry.amount
-            currency = currency ?? entry.currency
         }
         return currency != nil ? (amount, currency) : nil
     }

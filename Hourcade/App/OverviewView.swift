@@ -118,7 +118,7 @@ struct OverviewView: View {
                 Divider().frame(height: 42).padding(.horizontal, 28)
                 smallMetric("\(connectedCount)", L10n.tr("已连接平台"))
                 Divider().frame(height: 42).padding(.horizontal, 28)
-                smallMetric(priceText ?? "—", L10n.tr("游戏价值"))
+                smallMetric(priceText ?? "—", L10n.tr("参考价值"))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

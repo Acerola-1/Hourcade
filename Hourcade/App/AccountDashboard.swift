@@ -430,11 +430,13 @@ struct ContentView: View {
             return (game.id, conceptId)
         }) ?? []
         guard !steamAppIDs.isEmpty || !nintendoTitleIds.isEmpty || !psnTitles.isEmpty else { return }
-        let cc = region.steamCC
         let storefront = region.psnLocale
         let chihiro = region.chihiroCountry
         Task.detached(priority: .utility) {
-            async let steam: Void = SteamPriceStore.shared.sweep(appIDs: steamAppIDs, cc: cc)
+            // Sweep 横跨几分钟；申请用户级活动避免后台 AppNap 冻结下载。
+            let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "Hourcade price sweep")
+            defer { ProcessInfo.processInfo.endActivity(activity) }
+            async let steam: Void = SteamPriceStore.shared.sweep(appIDs: steamAppIDs)
             async let nintendo: Void = NintendoPriceStore.shared.sweep(titleIds: nintendoTitleIds)
             async let psn: Void = PSNPriceStore.shared.sweep(titles: psnTitles, storefront: storefront, chihiroCountry: chihiro)
             _ = await (steam, nintendo, psn)
@@ -875,11 +877,12 @@ enum PricingRegion: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 展示货币固定人民币：港服价与任天堂美区价都按汇率折算。
     var currencyCode: String {
         switch self {
         case .auto: "USD"
         case .cn: "CNY"
-        case .hk: "HKD"
+        case .hk: "CNY"
         case .jp: "JPY"
         case .us: "USD"
         case .gb: "GBP"
@@ -916,11 +919,10 @@ enum PricingRegion: String, CaseIterable, Identifiable {
         }
     }
 
-    /// "跟随 Steam 账号"用账号国家解析；解析不到时回退中国大陆。
+    /// 查询区固定港服：实测港区商店覆盖用户库存的 92%（289/312），而国区
+    /// 仅 57%——大量游戏不在国区上架。价格统一按汇率折算成人民币展示。
     static func resolve(_ raw: String?, steamCountry: String?) -> PricingRegion {
-        if let raw, let region = PricingRegion(rawValue: raw), region != .auto { return region }
-        if let steamCountry, let region = PricingRegion(rawValue: steamCountry.lowercased()), region != .auto { return region }
-        return .cn
+        .hk
     }
 }
 
@@ -1058,7 +1060,7 @@ private struct SteamSettingsView: View {
                         .init(value: snapshot.library.player?.level.map { L10n.format("Lv.%lld", $0) } ?? "—", label: L10n.tr("等级")),
                         .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
-                        .init(value: priceValue ?? "—", label: L10n.tr("游戏价值")),
+                        .init(value: priceValue ?? "—", label: L10n.tr("参考价值")),
                     ])
                     SteamGameList(games: snapshot.library.games, steamID: snapshot.library.player?.steamID, key: KeychainSecret.read("steam.apiKey") ?? "")
                     DisclosureGroup(L10n.tr("查看连接说明")) { connectionGuide }
@@ -1194,7 +1196,7 @@ private struct NintendoSettingsView: View {
                     StatsRow(stats: [
                         .init(value: DisplayFormat.totalHours(snapshot.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.games.count)", label: L10n.tr("游戏数量")),
-                        .init(value: priceValue ?? "—", label: L10n.tr("游戏价值")),
+                        .init(value: priceValue ?? "—", label: L10n.tr("参考价值")),
                     ])
                     NintendoGameList(games: snapshot.games)
                 }
@@ -1310,7 +1312,7 @@ private struct PSNSettingsView: View {
                         .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
                         .init(value: completionRate, label: L10n.tr("完成率")),
-                        .init(value: priceValue ?? "—", label: L10n.tr("游戏价值")),
+                        .init(value: priceValue ?? "—", label: L10n.tr("参考价值")),
                     ])
                     if let counts = snapshot.library.trophies?.earned {
                         TrophyCountRow(counts: counts)

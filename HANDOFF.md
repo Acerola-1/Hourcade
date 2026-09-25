@@ -186,6 +186,42 @@ PlayLog 返回游戏名称、图片、商店链接、累计游玩分钟、首次
 - 总览头部小字"来自 N 个已连接平台"已按用户要求删除（汇总卡片里已有平台数；空状态提示"连接平台后…"保留）
 - **旧快照没有新字段**：升级后需要点一次"同步全部"，三个平台的 last-played 才会落库。
 
+### 游戏价值最终计价方案（2026-09-26 凌晨定稿）
+
+经多轮纠偏（港服一刀切 → 国区一刀切 → 最终定稿），用户拍板的方案：
+
+- **Steam：国区优先、港服补缺（双区查询）**。国区有价用原生人民币（不需换算，最符合实际——多数用户在国区付钱）；国区没有的（大量游戏不在国区上架，实测国区仅覆盖 ~57%）用港服价补，折算人民币。实测 290/312 = 280 国区价 + 10 港服价。
+- **Nintendo：美区美元价折算人民币**。无港区 nsuid 数据源（已穷尽实测），country=HK 配美区映射全 not_found。
+- **PSN：港服价折算人民币**（国区无 PS 商店）。
+- **展示货币统一人民币 ¥**；汇率 er-api 主源 + frankfurter 备源（frankfurter 域名有 301 但 URLSession 可跟随；er-api 实测更稳，已调为主源）。
+- `PricingRegion` 枚举保留但 resolve 固定 `.hk`（只服务 PSN 查询参数）；设置页的地区选择器已移除（无用户决策点）。Steam 的双区逻辑在 `SteamPriceStore.sweep(appIDs:)` 内部实现（sweepPass 两趟，pass1 CN / pass2 HK）。
+
+**本轮教训（多轮纠偏的原因）**：需求澄清不足就动手。正确顺序应是先复述方案（"国区优先港服补缺"是 Steam 专属逻辑，其他平台各有最优区）再实现。另：设置页的 pricingRegion AppStorage 键已无引用但 @AppStorage 属性残留于 GeneralSettingsView——无害。
+
+**清理记录**：曾误将任天堂日服兜底、多区域选择器等未确认实现合入后撤销（git reset soft + checkout），相关 bug（多币种混加导致 ¥25,611 虚高、XML struct 写回、Task.isCancelled 误杀、AppNap）中前两个随代码回退消失，后两个修复保留。
+
+### Nintendo 覆盖率调查（2026-09-25）——**代码已回退，仅保留结论**
+
+问题："82 款为何只定价 33 款"。逐条核对结论：
+- **11 款 Demo/体验版 + 约 12 款免费游戏无售价，不计入价值是正确行为**（非缺陷）。
+- 真缺口约 13 款港区/亚区游戏（圣兽之王、女神異聞錄５ 亂戰、MHR、Dead Cells、Ori、DQ XI S…）。
+
+根因：社区映射库仅美区且收录不全；**nsuid 区域锁定**（美区 nsuid 查港区价格返回 not_found）。
+
+**候选数据源实测结果（结论性调查，避免重复走死路）**：
+- 港区/亚区搜索后端（searching.nintendo-asia.com / nintendo.com.hk / ec.nintendo.com/HK）：**不存在**。
+- tinfoil.media 全量库：**503 已下线**。
+- NOA `getnsproducts` JSON：**已死**。
+- 日服官方 XML：**存活**（10045 款，含 nsuid + 日元价），但**用日文标题**（Monster Hunter Rise → モンスターハンターライズ），英文名匹配率仅 11/82。
+
+**决定：不做日服兜底**。曾实现并实测，净增益仅 +1~2 款（$96），却引入多币种混存导致合计错误的严重 bug（见下），收益远低于代价。**结论：任天堂港区/亚区无公开价格数据源，接受该限制，未定价显示 "—"。**
+
+**本轮踩坑记录（供未来参考）**：
+1. `JPCatalogParser` 的 `current` 是 struct，`guard var item = current` 改副本未写回 → 解析 10045 条字段全空。若将来做 XML 解析务必注意值类型写回。
+2. `Task.isCancelled` 检查会误杀清扫：视图 `.task` 结束即取消继承的 Task，导致 sweep 在批次中途 return。**此修复已保留**（见下）。
+3. 5.4MB 大文件在后台会被 AppNap 冻结下载，需 `ProcessInfo.beginActivity`。**此修复已保留**。
+4. **多币种混存 bug**：`totalValue` 直接累加不同币种的 amount（USD 1,335 + JPY 2,480 = 3,815"伪美元"），再乘汇率膨胀成 ¥25,611（实际应 ≈¥9,570）。凡聚合多来源价格必须按币种分组后再折算。
+
 ### 游戏价值 v2：PSN 接入 + 总览合计（2026-09-25）
 
 调研（探员实测验证）：①gamelist v2 每个 title 自带 `concept.id`（**数字类型**，首次按 String 解析失败——教训：PSN 接口的 id 字段常是数字）；②商店 GraphQL `metGetPricingDataByConceptId` **匿名可用**（`web.np.playstation.com/api/graphql/v1/op`，需要 `Content-Type: application/json` 头否则 CSRF 拦截 + `x-psn-store-locale-override` 头选区域），响应 `data.conceptRetrieve.defaultProduct.price{basePriceValue, discountedValue, currencyCode}`（分为单位）；③persistedQuery sha256Hash 会轮换（旧 hash 实测已 "not whitelisted"），社区均硬编码+手动更新；④legacy chihiro 接口实测仍存活（匿名 JSON，需完整 product id）。
