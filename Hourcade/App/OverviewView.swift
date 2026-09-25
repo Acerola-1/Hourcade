@@ -3,6 +3,7 @@ import CryptoKit
 
 struct OverviewView: View {
     @Environment(\.locale) private var locale
+    @State private var priceText: String?
     let steam: SteamSnapshot?
     let nintendo: NintendoSnapshot?
     let playStation: PSNSnapshot?
@@ -116,6 +117,8 @@ struct OverviewView: View {
                 smallMetric("\(gameEntries)", L10n.tr("游戏记录条目"))
                 Divider().frame(height: 42).padding(.horizontal, 28)
                 smallMetric("\(connectedCount)", L10n.tr("已连接平台"))
+                Divider().frame(height: 42).padding(.horizontal, 28)
+                smallMetric(priceText ?? "—", L10n.tr("游戏价值"))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -137,6 +140,10 @@ struct OverviewView: View {
                 .padding(.trailing, 20)
                 .padding(.top, 10)
                 .accessibilityHidden(true)
+        }
+        .task { priceText = await PriceValue.overviewText(steam: steam, nintendo: nintendo, playStation: playStation) }
+        .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
+            Task { priceText = await PriceValue.overviewText(steam: steam, nintendo: nintendo, playStation: playStation) }
         }
     }
 

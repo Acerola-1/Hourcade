@@ -36,6 +36,9 @@ struct PSNGame: Identifiable, Codable, Sendable {
     let lastPlayed: String?
     var imageURL: URL? = nil
     var hasPlaytime = true
+    // The store concept id, used for one-hop price lookups. nil on snapshots
+    // saved before this field shipped (one re-sync fills it).
+    var conceptId: String? = nil
 
     var lastPlayedDate: Date? {
         guard let lastPlayed, !lastPlayed.isEmpty else { return nil }

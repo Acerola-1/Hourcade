@@ -179,6 +179,7 @@ struct ContentView: View {
                     try LocalSnapshotStore.save(newSnapshot, as: "nintendo")
                     nintendoSnapshot = newSnapshot
                     try saveWidgetSnapshots()
+                    refreshPrices()
                 }
             case .playStation:
                 PSNSettingsView(snapshot: psnSnapshot) { library in
@@ -187,6 +188,7 @@ struct ContentView: View {
                     psnSnapshot = newSnapshot
                     try saveWidgetSnapshots()
                     reloadWidgets()
+                    refreshPrices()
                 }
             case .studio:
                 ContentUnavailableView {
@@ -217,6 +219,7 @@ struct ContentView: View {
             await refreshNintendo()
             await refreshPlayStation()
             await cachePlatformArtwork()
+            refreshPrices()
         }
     }
 
@@ -343,6 +346,7 @@ struct ContentView: View {
         await refreshPlayStation()
         await cachePlatformArtwork()
         do { try saveWidgetSnapshots() } catch { steamError = .widgetWriteFailure(error) }
+        refreshPrices()
     }
 
     @MainActor
@@ -406,10 +410,34 @@ struct ContentView: View {
             if library.games.isEmpty {
                 steamError = .text("Steam 没有返回游戏。请检查个人资料的“游戏详情”隐私设置；改为公开会让其他人也能查看相关游戏信息")
             }
+            refreshPrices()
             return true
         } catch {
             steamError = .failure(error)
             return false
+        }
+    }
+
+    /// Price sweeps run in the background after syncs; pages only ever read
+    /// the cached results. The stores themselves throttle to a 24h TTL.
+    @MainActor
+    private func refreshPrices() {
+        let region = PricingRegion.resolve(L10n.defaults.string(forKey: "pricingRegion"), steamCountry: steamSnapshot?.library.player?.countryCode)
+        let steamAppIDs = steamSnapshot?.library.games.map(\.id) ?? []
+        let nintendoTitleIds = nintendoSnapshot?.games.compactMap(\.titleId) ?? []
+        let psnTitles = (psnSnapshot?.library.games.compactMap { game -> (titleId: String, conceptId: String)? in
+            guard let conceptId = game.conceptId else { return nil }
+            return (game.id, conceptId)
+        }) ?? []
+        guard !steamAppIDs.isEmpty || !nintendoTitleIds.isEmpty || !psnTitles.isEmpty else { return }
+        let cc = region.steamCC
+        let storefront = region.psnLocale
+        let chihiro = region.chihiroCountry
+        Task.detached(priority: .utility) {
+            async let steam: Void = SteamPriceStore.shared.sweep(appIDs: steamAppIDs, cc: cc)
+            async let nintendo: Void = NintendoPriceStore.shared.sweep(titleIds: nintendoTitleIds)
+            async let psn: Void = PSNPriceStore.shared.sweep(titles: psnTitles, storefront: storefront, chihiroCountry: chihiro)
+            _ = await (steam, nintendo, psn)
         }
     }
 }
@@ -814,11 +842,172 @@ private struct PSNGameRow: View {
     }
 }
 
+/// 计价地区：决定价格查询的国家（cc/country/storefront）与显示货币。
+/// UI 语言与计价地区是两个独立维度。
+enum PricingRegion: String, CaseIterable, Identifiable {
+    case auto, cn, hk, jp, us, gb, de, kr
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .auto: L10n.tr("跟随 Steam 账号")
+        case .cn: L10n.tr("中国大陆")
+        case .hk: L10n.tr("香港")
+        case .jp: L10n.tr("日本")
+        case .us: L10n.tr("美国")
+        case .gb: L10n.tr("英国")
+        case .de: L10n.tr("欧元区")
+        case .kr: L10n.tr("韩国")
+        }
+    }
+
+    var steamCC: String {
+        switch self {
+        case .auto: "US"
+        case .cn: "CN"
+        case .hk: "HK"
+        case .jp: "JP"
+        case .us: "US"
+        case .gb: "GB"
+        case .de: "DE"
+        case .kr: "KR"
+        }
+    }
+
+    var currencyCode: String {
+        switch self {
+        case .auto: "USD"
+        case .cn: "CNY"
+        case .hk: "HKD"
+        case .jp: "JPY"
+        case .us: "USD"
+        case .gb: "GBP"
+        case .de: "EUR"
+        case .kr: "KRW"
+        }
+    }
+
+    /// PS Store has no mainland-China storefront; CN falls back to the HK one
+    /// and the HKD price is converted at display time.
+    var psnLocale: String {
+        switch self {
+        case .auto: "en-us"
+        case .cn: "en-hk"
+        case .hk: "en-hk"
+        case .jp: "ja-jp"
+        case .us: "en-us"
+        case .gb: "en-gb"
+        case .de: "de-de"
+        case .kr: "ko-kr"
+        }
+    }
+
+    var chihiroCountry: String {
+        switch self {
+        case .auto: "US/en"
+        case .cn: "HK/en"
+        case .hk: "HK/en"
+        case .jp: "JP/ja"
+        case .us: "US/en"
+        case .gb: "GB/en"
+        case .de: "DE/de"
+        case .kr: "KR/ko"
+        }
+    }
+
+    /// "跟随 Steam 账号"用账号国家解析；解析不到时回退中国大陆。
+    static func resolve(_ raw: String?, steamCountry: String?) -> PricingRegion {
+        if let raw, let region = PricingRegion(rawValue: raw), region != .auto { return region }
+        if let steamCountry, let region = PricingRegion(rawValue: steamCountry.lowercased()), region != .auto { return region }
+        return .cn
+    }
+}
+
+/// 价格汇总的读取与格式化；只读缓存，任何调用都不会触发网络请求。
+@MainActor
+enum PriceValue {
+    static func steamText(snapshot: SteamSnapshot?) async -> String? {
+        guard let snapshot else { return nil }
+        let region = PricingRegion.resolve(L10n.defaults.string(forKey: "pricingRegion"), steamCountry: snapshot.library.player?.countryCode)
+        guard let sum = await SteamPriceStore.shared.totalValue(appIDs: snapshot.library.games.map(\.id)),
+              let currency = sum.currency else { return nil }
+        return await formatted(sum.amount, from: currency, to: region.currencyCode)
+    }
+
+    static func nintendoText(snapshot: NintendoSnapshot?) async -> String? {
+        guard let snapshot else { return nil }
+        let region = PricingRegion.resolve(L10n.defaults.string(forKey: "pricingRegion"), steamCountry: nil)
+        guard let sum = await NintendoPriceStore.shared.totalValue(titleIds: snapshot.games.compactMap(\.titleId)),
+              let currency = sum.currency else { return nil }
+        return await formatted(sum.amount, from: currency, to: region.currencyCode)
+    }
+
+    static func psnText(snapshot: PSNSnapshot?) async -> String? {
+        guard let snapshot else { return nil }
+        let region = PricingRegion.resolve(L10n.defaults.string(forKey: "pricingRegion"), steamCountry: nil)
+        let titleIds = snapshot.library.games.map(\.id)
+        guard let sum = await PSNPriceStore.shared.totalValue(titleIds: titleIds),
+              let currency = sum.currency else { return nil }
+        return await formatted(sum.amount, from: currency, to: region.currencyCode)
+    }
+
+    /// Overview aggregate: every priced platform contributes in its own query
+    /// currency, all converted to the pricing region's currency.
+    static func overviewText(steam: SteamSnapshot?, nintendo: NintendoSnapshot?, playStation: PSNSnapshot?) async -> String? {
+        let region = PricingRegion.resolve(L10n.defaults.string(forKey: "pricingRegion"), steamCountry: steam?.library.player?.countryCode)
+        var total = 0.0
+        var any = false
+        if let sum = await SteamPriceStore.shared.totalValue(appIDs: steam?.library.games.map(\.id) ?? []),
+           let currency = sum.currency {
+            any = true
+            if currency == region.currencyCode {
+                total += sum.amount
+            } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: region.currencyCode) {
+                total += sum.amount * rate
+            }
+        }
+        if let sum = await NintendoPriceStore.shared.totalValue(titleIds: nintendo?.games.compactMap(\.titleId) ?? []),
+           let currency = sum.currency {
+            any = true
+            if currency == region.currencyCode {
+                total += sum.amount
+            } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: region.currencyCode) {
+                total += sum.amount * rate
+            }
+        }
+        if let sum = await PSNPriceStore.shared.totalValue(titleIds: playStation?.library.games.map(\.id) ?? []),
+           let currency = sum.currency {
+            any = true
+            if currency == region.currencyCode {
+                total += sum.amount
+            } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: region.currencyCode) {
+                total += sum.amount * rate
+            }
+        }
+        guard any else { return nil }
+        return await formatted(total, from: region.currencyCode, to: region.currencyCode)
+    }
+
+    private static func formatted(_ amount: Double, from currency: String, to display: String) async -> String? {
+        let converted: Double
+        if currency == display {
+            converted = amount
+        } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: display) {
+            converted = amount * rate
+        } else {
+            return nil
+        }
+        return converted.formatted(.currency(code: display).presentation(.narrow))
+    }
+}
+
 private struct SteamSettingsView: View {
     @Environment(\.locale) private var locale
     @State private var account = UserDefaults.standard.string(forKey: "steam.account") ?? ""
     @State private var apiKey = ""
     @State private var isEditing = KeychainSecret.read("steam.apiKey") == nil
+    @State private var priceValue: String?
 
     let snapshot: SteamSnapshot?
     let isRefreshing: Bool
@@ -869,10 +1058,15 @@ private struct SteamSettingsView: View {
                         .init(value: snapshot.library.player?.level.map { L10n.format("Lv.%lld", $0) } ?? "—", label: L10n.tr("等级")),
                         .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
+                        .init(value: priceValue ?? "—", label: L10n.tr("游戏价值")),
                     ])
                     SteamGameList(games: snapshot.library.games, steamID: snapshot.library.player?.steamID, key: KeychainSecret.read("steam.apiKey") ?? "")
                     DisclosureGroup(L10n.tr("查看连接说明")) { connectionGuide }
                         .padding(.horizontal, 4)
+                }
+                .task { priceValue = await PriceValue.steamText(snapshot: snapshot) }
+                .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
+                    Task { priceValue = await PriceValue.steamText(snapshot: snapshot) }
                 }
             } else {
                 connectionGuide
@@ -953,6 +1147,7 @@ private struct NintendoSettingsView: View {
     @Environment(\.locale) private var locale
     @State private var status: AccountMessage?
     @State private var isLoading = false
+    @State private var priceValue: String?
     let snapshot: NintendoSnapshot?
     let onSynced: (NintendoSnapshot) async throws -> Void
 
@@ -999,8 +1194,13 @@ private struct NintendoSettingsView: View {
                     StatsRow(stats: [
                         .init(value: DisplayFormat.totalHours(snapshot.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.games.count)", label: L10n.tr("游戏数量")),
+                        .init(value: priceValue ?? "—", label: L10n.tr("游戏价值")),
                     ])
                     NintendoGameList(games: snapshot.games)
+                }
+                .task { priceValue = await PriceValue.nintendoText(snapshot: snapshot) }
+                .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
+                    Task { priceValue = await PriceValue.nintendoText(snapshot: snapshot) }
                 }
             } else {
                 SettingsPanel(title: L10n.tr("连接账号")) {
@@ -1060,6 +1260,7 @@ private struct PSNSettingsView: View {
     @Environment(\.locale) private var locale
     @State private var status: AccountMessage?
     @State private var isLoading = false
+    @State private var priceValue: String?
     let snapshot: PSNSnapshot?
     let onSynced: (PSNLibrary) async throws -> Void
 
@@ -1109,11 +1310,16 @@ private struct PSNSettingsView: View {
                         .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
                         .init(value: completionRate, label: L10n.tr("完成率")),
+                        .init(value: priceValue ?? "—", label: L10n.tr("游戏价值")),
                     ])
                     if let counts = snapshot.library.trophies?.earned {
                         TrophyCountRow(counts: counts)
                     }
                     PSNGameList(games: snapshot.library.games)
+                }
+                .task { priceValue = await PriceValue.psnText(snapshot: snapshot) }
+                .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
+                    Task { priceValue = await PriceValue.psnText(snapshot: snapshot) }
                 }
             } else {
                 SettingsPanel(title: L10n.tr("连接账号")) {
@@ -1283,6 +1489,7 @@ struct GeneralSettingsView: View {
     @Environment(\.locale) private var locale
     @AppStorage(L10n.languageKey, store: L10n.defaults) private var language: AppLanguage = .system
     @AppStorage(L10n.themeKey, store: L10n.defaults) private var theme: AppTheme = .system
+    @AppStorage("pricingRegion", store: L10n.defaults) private var pricingRegionRaw = PricingRegion.auto.rawValue
     @State private var cacheBytes: Int64?
     @State private var cacheFiles = 0
     @State private var isClearing = false
@@ -1310,6 +1517,16 @@ struct GeneralSettingsView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 Text(L10n.tr("主题只影响 Hourcade 窗口；桌面小组件跟随系统外观。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            SettingsPanel(title: L10n.tr("计价地区")) {
+                Picker(L10n.tr("计价地区"), selection: $pricingRegionRaw) {
+                    ForEach(PricingRegion.allCases) { region in
+                        Text(region.title).tag(region.rawValue)
+                    }
+                }
+                .labelsHidden()
+                Text(L10n.tr("游戏价值按所选地区的货币折算展示；不影响任何平台账号与购买。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             SettingsPanel(title: L10n.tr("缓存")) {

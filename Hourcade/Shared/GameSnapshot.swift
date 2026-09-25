@@ -22,10 +22,11 @@ struct SteamGame: Identifiable, Codable, Sendable {
 struct SteamPlayer: Codable, Sendable {
     let name: String
     let avatarURL: URL?
-    // The resolved 64-bit SteamID and the account level; both nil on snapshots
-    // saved before these fields shipped.
+    // The resolved 64-bit SteamID, the account level and the account country;
+    // nil on snapshots saved before these fields shipped.
     var steamID: String? = nil
     var level: Int? = nil
+    var countryCode: String? = nil
 
     var avatarName: String? {
         avatarURL.map { "steam-avatar-" + $0.deletingPathExtension().lastPathComponent }

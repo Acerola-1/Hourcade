@@ -351,3 +351,176 @@ enum NintendoError: LocalizedError {
         }
     }
 }
+
+// MARK: - 游戏价值（价格缓存仓库）
+
+struct NintendoPriceEntry: Codable, Sendable {
+    let amount: Double
+    let currency: String
+    let regularAmount: Double
+    let discountPercent: Int
+    let fetchedAt: Date
+}
+
+/// Nintendo eShop 价格。查询基于美区（nsuid 区域锁定，社区映射库也只有美区
+/// 数据完整），返回美元价，由调用方按当前汇率折算成计价地区货币。
+/// titleId → nsuid 的映射来自社区 titledb 数据集（7 天缓存）。
+actor NintendoPriceStore {
+    static let shared = NintendoPriceStore()
+
+    private var nsuidByTitleId: [String: Int]?
+    private var mapFetchedAt: Date?
+    private var cache: [String: NintendoPriceEntry]?
+
+    private static let titledbURL = URL(string: "https://raw.githubusercontent.com/blawar/titledb/master/US.en.json")!
+    private static let queryCountry = "US"
+
+    private static var mapFile: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/titledb-us.json")
+    }
+
+    private static var priceFile: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/nintendo-prices.json")
+    }
+
+    func current(titleId: String) -> NintendoPriceEntry? {
+        loadPrices()
+        return cache?[titleId.lowercased()]
+    }
+
+    /// Cached sum only — never touches the network. Entries are US dollars;
+    /// the caller converts to the display currency.
+    func totalValue(titleIds: [String]) -> (amount: Double, currency: String?)? {
+        loadPrices()
+        var amount = 0.0
+        var currency: String?
+        for titleId in titleIds {
+            guard let entry = cache?[titleId.lowercased()] else { continue }
+            amount += entry.amount
+            currency = currency ?? entry.currency
+        }
+        return currency != nil ? (amount, currency) : nil
+    }
+
+    /// 全量清扫：映射库 7 天更新一次，价格按 titleId 磁盘缓存 24 小时。
+    func sweep(titleIds: [String]) async {
+        await ensureMap()
+        guard let map = nsuidByTitleId else { return }
+        loadPrices()
+        let normalized = titleIds.map { $0.lowercased() }
+        let stale = normalized.filter { titleId in
+            guard let entry = cache?[titleId] else { return true }
+            return Date().timeIntervalSince(entry.fetchedAt) > 86_400
+        }
+        // The response identifies each price by nsuid; map back to titleIds so
+        // the cache is keyed the way lookups happen.
+        let titleIdByNsuid = Dictionary(map.compactMap { (titleId, nsuid) -> (Int, String)? in
+            stale.contains(titleId) ? (nsuid, titleId) : nil
+        }, uniquingKeysWith: { first, _ in first })
+        let nsuids = stale.compactMap { map[$0] }
+        guard !nsuids.isEmpty, !titleIdByNsuid.isEmpty else { return }
+
+        // The price endpoint takes up to 50 nsuids per request.
+        for start in stride(from: 0, to: nsuids.count, by: 50) {
+            if Task.isCancelled { return }
+            let chunk = nsuids[start..<min(start + 50, nsuids.count)]
+            let ids = chunk.map(String.init).joined(separator: ",")
+            guard let url = URL(string: "https://api.ec.nintendo.com/v1/price?country=\(Self.queryCountry)&lang=en&ids=\(ids)"),
+                  let (data, response) = try? await URLSession.shared.data(from: url),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let decoded = try? JSONDecoder().decode(NintendoPricesResponse.self, from: data)
+            else { continue }
+            for price in decoded.prices ?? [] {
+                guard let titleId = titleIdByNsuid[price.titleId],
+                      price.salesStatus == "onsale", let regular = price.regularPrice else { continue }
+                let regularAmount = Double(regular.rawValue ?? "") ?? 0
+                guard regularAmount > 0, let currency = regular.currency else { continue }
+                let discountAmount = price.discountPrice.flatMap { Double($0.rawValue ?? "") ?? 0 }
+                let current = discountAmount ?? regularAmount
+                let percent = (discountAmount != nil && regularAmount > 0)
+                    ? Int(round((1 - current / regularAmount) * 100))
+                    : 0
+                cache?[titleId] = NintendoPriceEntry(
+                    amount: current,
+                    currency: currency,
+                    regularAmount: regularAmount,
+                    discountPercent: max(percent, 0),
+                    fetchedAt: .now
+                )
+            }
+            persist()
+        }
+        NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+    }
+
+    private func ensureMap() async {
+        if let mapFetchedAt, let nsuidByTitleId, Date().timeIntervalSince(mapFetchedAt) < 7 * 86_400 {
+            return
+        }
+        guard let (data, response) = try? await URLSession.shared.data(from: Self.titledbURL),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let decoded = try? JSONDecoder().decode([String: TitledbEntry].self, from: data)
+        else { return }
+        var map: [String: Int] = [:]
+        for entry in decoded.values {
+            guard let id = entry.id?.lowercased(), let nsuId = entry.nsuId else { continue }
+            map[id] = nsuId
+        }
+        nsuidByTitleId = map
+        mapFetchedAt = .now
+        if let file = Self.mapFile, let data = try? JSONEncoder().encode(map) {
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
+    }
+
+    private func loadPrices() {
+        guard cache == nil else { return }
+        guard let file = Self.priceFile, let data = try? Data(contentsOf: file) else {
+            cache = [:]
+            return
+        }
+        cache = (try? JSONDecoder().decode([String: NintendoPriceEntry].self, from: data)) ?? [:]
+    }
+
+    private func persist() {
+        guard let file = Self.priceFile, let cache, let data = try? JSONEncoder().encode(cache) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
+private struct NintendoPricesResponse: Decodable {
+    let prices: [NintendoPriceDTO]?
+}
+
+private struct NintendoPriceDTO: Decodable {
+    let titleId: Int
+    let salesStatus: String?
+    let regularPrice: PriceDTO?
+    let discountPrice: PriceDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case titleId = "title_id"
+        case salesStatus = "sales_status"
+        case regularPrice = "regular_price"
+        case discountPrice = "discount_price"
+    }
+}
+
+private struct PriceDTO: Decodable {
+    let currency: String?
+    let rawValue: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case currency
+        case rawValue = "raw_value"
+    }
+}
+
+private struct TitledbEntry: Decodable {
+    let id: String?
+    let nsuId: Int?
+}

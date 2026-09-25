@@ -67,6 +67,23 @@ enum PSNAPI {
         let nextOffset: Int?
     }
 
+    private struct ConceptDTO: Decodable {
+        let id: String?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let text = try? container.decode(String.self, forKey: .id) {
+                id = text
+            } else if let number = try? container.decode(Int.self, forKey: .id) {
+                id = String(number)
+            } else {
+                id = nil
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey { case id }
+    }
+
     private struct GameDTO: Decodable {
         let titleId: String
         let name: String
@@ -75,9 +92,10 @@ enum PSNAPI {
         let localizedImageUrl: String?
         let playDuration: String?
         let lastPlayedDateTime: String?
+        let conceptId: String?
 
         private enum CodingKeys: String, CodingKey {
-            case titleId, name, localizedName, imageUrl, localizedImageUrl, playDuration, lastPlayedDateTime
+            case titleId, name, localizedName, imageUrl, localizedImageUrl, playDuration, lastPlayedDateTime, concept
         }
 
         init(from decoder: Decoder) throws {
@@ -90,6 +108,7 @@ enum PSNAPI {
             // A missing, null, or incorrectly typed duration is unknown, not zero.
             playDuration = try? values.decode(String.self, forKey: .playDuration)
             lastPlayedDateTime = try values.decodeIfPresent(String.self, forKey: .lastPlayedDateTime)
+            conceptId = (try? values.decodeIfPresent(ConceptDTO.self, forKey: .concept))?.id
         }
     }
 
@@ -177,6 +196,7 @@ enum PSNAPI {
                     lastPlayed: title.lastPlayedDateTime
                 )
                 game.imageURL = imageURL(title.localizedImageUrl) ?? imageURL(title.imageUrl)
+                game.conceptId = nonempty(title.conceptId)
                 game.hasPlaytime = minutes != nil
                 games.append(game)
             }
@@ -616,4 +636,161 @@ private enum PSNError: LocalizedError {
         case .missingCode: L10n.tr("PlayStation 登录完成，但没有返回授权码")
         }
     }
+}
+
+// MARK: - 游戏价值（价格缓存仓库）
+
+struct PSNPriceEntry: Codable, Sendable {
+    let amount: Double
+    let currency: String
+    let regularAmount: Double
+    let discountPercent: Int
+    let productId: String?
+    let fetchedAt: Date
+}
+
+/// PS Store 价格：主通道为商店 GraphQL（匿名，按 concept id 查询），
+/// 备用通道为 chihiro 旧接口（需要此前成功解析出的 product id）。
+/// 响应价格以商店分站币种计，由调用方按汇率折算成计价地区货币。
+actor PSNPriceStore {
+    static let shared = PSNPriceStore()
+
+    // Persisted-query hashes rotate occasionally; when a sweep starts failing
+    // wholesale the prices simply age out and rows show "—" until updated.
+    private static let pricingHash = "abcb311ea830e679fe2b697a27f755764535d825b24510ab1239a4ca3092bd09"
+    private static let pricingOperation = "metGetPricingDataByConceptId"
+
+    private var cache: [String: PSNPriceEntry]?
+
+    private static var priceFile: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/psn-prices.json")
+    }
+
+    func current(titleId: String) -> PSNPriceEntry? {
+        loadFromDisk()
+        return cache?[titleId]
+    }
+
+    func totalValue(titleIds: [String]) -> (amount: Double, currency: String?)? {
+        loadFromDisk()
+        var amount = 0.0
+        var currency: String?
+        for titleId in titleIds {
+            guard let entry = cache?[titleId] else { continue }
+            amount += entry.amount
+            currency = currency ?? entry.currency
+        }
+        return currency != nil ? (amount, currency) : nil
+    }
+
+    /// 全量清扫：每游戏一个 GraphQL 请求（主通道），失败时若此前缓存过
+    /// product id 则走 chihiro 备用通道核实。条目磁盘缓存 24 小时。
+    func sweep(titles: [(titleId: String, conceptId: String)], storefront: String, chihiroCountry: String) async {
+        loadFromDisk()
+        var pending: [(titleId: String, conceptId: String)] = []
+        for title in titles {
+            if let entry = cache?[title.titleId], Date().timeIntervalSince(entry.fetchedAt) < 86_400 { continue }
+            pending.append(title)
+        }
+        guard !pending.isEmpty else { return }
+
+        for title in pending {
+            if Task.isCancelled { return }
+            var entry = await Self.graphqlPrice(conceptId: title.conceptId, storefront: storefront)
+            if entry == nil, let productId = cache?[title.titleId]?.productId {
+                entry = await Self.chihiroPrice(productId: productId, country: chihiroCountry)
+            }
+            if let entry {
+                cache?[title.titleId] = entry
+                persist()
+            }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+        NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+    }
+
+    /// Anonymous store-GraphQL price lookup by concept id.
+    private static func graphqlPrice(conceptId: String, storefront: String) async -> PSNPriceEntry? {
+        var components = URLComponents(string: "https://web.np.playstation.com/api/graphql/v1/op")!
+        let variables = "{\"conceptId\":\"\(conceptId)\"}"
+        let extensions = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"\(pricingHash)\"}}"
+        components.queryItems = [
+            URLQueryItem(name: "operationName", value: pricingOperation),
+            URLQueryItem(name: "variables", value: variables),
+            URLQueryItem(name: "extensions", value: extensions),
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(storefront, forHTTPHeaderField: "x-psn-store-locale-override")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let decoded = try? JSONDecoder().decode(ConceptPricingResponse.self, from: data),
+              let product = decoded.data?.conceptRetrieve?.defaultProduct,
+              let price = product.price,
+              let currency = price.currencyCode,
+              let base = price.basePriceValue, base > 0
+        else { return nil }
+        let current = price.discountedValue ?? base
+        let percent = current < base ? Int(round((1 - Double(current) / Double(base)) * 100)) : 0
+        return PSNPriceEntry(
+            amount: Double(current) / 100,
+            currency: currency,
+            regularAmount: Double(base) / 100,
+            discountPercent: max(percent, 0),
+            productId: product.id,
+            fetchedAt: .now
+        )
+    }
+
+    /// Legacy store API, kept alive by Sony for years; needs the full product id.
+    private static func chihiroPrice(productId: String, country: String) async -> PSNPriceEntry? {
+        guard let url = URL(string: "https://store.playstation.com/store/api/chihiro/00_09_000/container/\(country)/999/\(productId)") else { return nil }
+        guard let (data, response) = try? await URLSession.shared.data(from: url),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let sku = root["default_sku"] as? [String: Any],
+              let price = sku["price"] as? Int, price > 0,
+              let currency = (sku["currency"] as? String) ?? (root["currency_code"] as? String)
+        else { return nil }
+        return PSNPriceEntry(amount: Double(price) / 100, currency: currency, regularAmount: Double(price) / 100, discountPercent: 0, productId: productId, fetchedAt: .now)
+    }
+
+    private func loadFromDisk() {
+        guard cache == nil else { return }
+        guard let file = Self.priceFile, let data = try? Data(contentsOf: file) else {
+            cache = [:]
+            return
+        }
+        cache = (try? JSONDecoder().decode([String: PSNPriceEntry].self, from: data)) ?? [:]
+    }
+
+    private func persist() {
+        guard let file = Self.priceFile, let cache, let data = try? JSONEncoder().encode(cache) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
+private struct ConceptPricingResponse: Decodable {
+    let data: ConceptData?
+}
+
+private struct ConceptData: Decodable {
+    let conceptRetrieve: ConceptRetrieve?
+}
+
+private struct ConceptRetrieve: Decodable {
+    let defaultProduct: DefaultProduct?
+}
+
+private struct DefaultProduct: Decodable {
+    let id: String?
+    let price: SkuPriceDTO?
+}
+
+private struct SkuPriceDTO: Decodable {
+    let basePriceValue: Int?
+    let discountedValue: Int?
+    let currencyCode: String?
 }

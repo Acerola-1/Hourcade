@@ -51,6 +51,7 @@ enum SteamAPI {
         let steamid: String
         let personaname: String
         let avatarfull: String?
+        let loccountrycode: String?
     }
 
     private struct LevelEnvelope: Decodable, Sendable {
@@ -96,7 +97,7 @@ enum SteamAPI {
             let avatarURL = dto.avatarfull.flatMap { URL(string: $0) }.flatMap {
                 isAllowedAvatarURL($0) ? $0 : nil
             }
-            return SteamPlayer(name: dto.personaname, avatarURL: avatarURL, steamID: dto.steamid, level: levelSummary?.response?.player_level)
+            return SteamPlayer(name: dto.personaname, avatarURL: avatarURL, steamID: dto.steamid, level: levelSummary?.response?.player_level, countryCode: dto.loccountrycode)
         }
         return SteamLibrary(games: all, recent: latest, player: player)
     }
@@ -525,4 +526,133 @@ private struct PlayerStats: Decodable {
 
 private struct AchievementState: Decodable {
     let achieved: Int?
+}
+
+// MARK: - 游戏价值（价格缓存仓库）
+
+extension Notification.Name {
+    static let pricesDidChange = Notification.Name("Hourcade.PricesDidChange")
+}
+
+struct SteamPriceEntry: Codable, Sendable {
+    let currency: String
+    let initial: Int
+    let current: Int
+    let discountPercent: Int
+    let fetchedAt: Date
+}
+
+/// Steam 每款游戏的价格，按 appid 磁盘缓存 24 小时。清扫任务由同步流程在
+/// 后台触发（官方接口限流约 200 次/5 分钟，全量约 8 分钟），页面只读缓存。
+actor SteamPriceStore {
+    static let shared = SteamPriceStore()
+
+    private var cache: [Int: SteamPriceEntry]?
+
+    private static var file: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/steam-prices.json")
+    }
+
+    func current(appID: Int) -> SteamPriceEntry? {
+        loadFromDisk()
+        return cache?[appID]
+    }
+
+    /// Cached sum only — never touches the network. Prices share one currency
+    /// per sweep (the pricing region's), so no conversion happens here.
+    func totalValue(appIDs: [Int]) -> (amount: Double, currency: String?)? {
+        loadFromDisk()
+        guard let cache else { return nil }
+        var amount = 0.0
+        var currency: String?
+        for appID in appIDs {
+            guard let entry = cache[appID] else { continue }
+            amount += Double(entry.current) / 100
+            currency = currency ?? entry.currency
+        }
+        return currency != nil ? (amount, currency) : nil
+    }
+
+    /// 全量清扫：只补缺失或超过 24 小时的条目，每条请求间隔 1.6 秒。
+    func sweep(appIDs: [Int], cc: String) async {
+        loadFromDisk()
+        let stale = appIDs.filter { appID in
+            guard let entry = cache?[appID] else { return true }
+            return Date().timeIntervalSince(entry.fetchedAt) > 86_400
+        }
+        guard !stale.isEmpty else { return }
+        for appID in stale {
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            guard var components = URLComponents(string: "https://store.steampowered.com/api/appdetails?appids=\(appID)&cc=\(cc)&filters=price_overview"),
+                  let (data, response) = try? await URLSession.shared.data(from: components.url!),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let basic = payload.values
+                      .compactMap({ $0 as? [String: Any] })
+                      .first(where: { ($0["success"] as? Bool) == true })?["data"] as? [String: Any],
+                  let overview = basic["price_overview"] as? [String: Any],
+                  let currency = overview["currency"] as? String,
+                  let initial = overview["initial"] as? Int,
+                  let current = overview["final"] as? Int
+            else { continue }
+            cache?[appID] = SteamPriceEntry(
+                currency: currency,
+                initial: initial,
+                current: current,
+                discountPercent: overview["discount_percent"] as? Int ?? 0,
+                fetchedAt: .now
+            )
+            persist()
+        }
+        NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+    }
+
+    private func loadFromDisk() {
+        guard cache == nil else { return }
+        guard let file = Self.file, let data = try? Data(contentsOf: file) else {
+            cache = [:]
+            return
+        }
+        cache = (try? JSONDecoder().decode([Int: SteamPriceEntry].self, from: data)) ?? [:]
+    }
+
+    private func persist() {
+        guard let file = Self.file, let cache, let data = try? JSONEncoder().encode(cache) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
+/// Daily FX rates for value conversion; free public sources, cached in memory
+/// for the session (a day of drift is irrelevant for a display-only value).
+actor ExchangeRateStore {
+    static let shared = ExchangeRateStore()
+
+    private var rates: [String: Double] = [:]
+
+    func rate(from: String, to: String) async -> Double? {
+        guard from != to else { return 1 }
+        let key = "\(from)|\(to)"
+        if let rate = rates[key] { return rate }
+        if let (data, response) = try? await URLSession.shared.data(from: URL(string: "https://api.frankfurter.app/latest?from=\(from)&to=\(to)")!),
+           (response as? HTTPURLResponse)?.statusCode == 200,
+           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let list = root["rates"] as? [String: Any],
+           let value = list[to] as? Double {
+            rates[key] = value
+            return value
+        }
+        // Backup source with broader currency coverage.
+        if let (data, response) = try? await URLSession.shared.data(from: URL(string: "https://open.er-api.com/v6/latest/\(from)")!),
+           (response as? HTTPURLResponse)?.statusCode == 200,
+           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let list = root["rates"] as? [String: Any],
+           let value = list[to] as? Double {
+            rates[key] = value
+            return value
+        }
+        return nil
+    }
 }

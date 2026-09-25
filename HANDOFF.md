@@ -186,6 +186,31 @@ PlayLog 返回游戏名称、图片、商店链接、累计游玩分钟、首次
 - 总览头部小字"来自 N 个已连接平台"已按用户要求删除（汇总卡片里已有平台数；空状态提示"连接平台后…"保留）
 - **旧快照没有新字段**：升级后需要点一次"同步全部"，三个平台的 last-played 才会落库。
 
+### 游戏价值 v2：PSN 接入 + 总览合计（2026-09-25）
+
+调研（探员实测验证）：①gamelist v2 每个 title 自带 `concept.id`（**数字类型**，首次按 String 解析失败——教训：PSN 接口的 id 字段常是数字）；②商店 GraphQL `metGetPricingDataByConceptId` **匿名可用**（`web.np.playstation.com/api/graphql/v1/op`，需要 `Content-Type: application/json` 头否则 CSRF 拦截 + `x-psn-store-locale-override` 头选区域），响应 `data.conceptRetrieve.defaultProduct.price{basePriceValue, discountedValue, currencyCode}`（分为单位）；③persistedQuery sha256Hash 会轮换（旧 hash 实测已 "not whitelisted"），社区均硬编码+手动更新；④legacy chihiro 接口实测仍存活（匿名 JSON，需完整 product id）。
+
+**实现**：
+- gamelist 解析 `concept.id`（Flexible String/Int）存进 `PSNGame.conceptId`；临时 gamelist dump 调试钩子已拆除。
+- `PSNPriceStore`（actor）：主通道 GraphQL 按 concept id 查价（成功时顺带缓存 defaultProduct.id）；备用通道 chihiro（用此前成功缓存过的 product id，首扫无 product id 时自动跳过）；条目 24h 磁盘缓存（psn-prices.json）。
+- 区域映射：`PricingRegion` 新增 `psnLocale`（x-psn-store-locale-override 头）与 `chihiroCountry`；中国大陆无 PS 商店 → 回退港服 HKD + 汇率折算（与 Switch 同思路）。
+- 展示：PSN 统计行 5 项（等级/总时长/游戏数量/完成率/游戏价值）；总览大卡片新增"游戏价值"合计（`PriceValue.overviewText`，Steam+Nintendo+PSN 三平台按计价地区货币折算加总）。
+- 实测：27/31 款游戏拿到港币价格（GraphQL 连折扣 -50%/-60% 均捕获），HKD 7,371；Steam ¥22,974 + Nintendo ≈¥8,825 + PSN ≈¥6,860 → 总览合计 ≈¥38,600。
+- 截图注意：应用窗口在其他 Space 时 `screencapture -l` 返回全黑（optionAll 能找到窗口但无法渲染），AX 切页也会间歇失效——数据验收以缓存文件为准。
+
+### 游戏价值 v1：Steam + Nintendo（2026-09-25）
+
+调研结论：Steam 用官方 appdetails `cc=` 参数直查（CNY/限流 200 次每 5 分钟）；Nintendo 用 eShop 官网同源接口 `api.ec.nintendo.com/v1/price`（country 参数 + **批量 50 个 nsuid**）；PSN 最难（商店 GraphQL 签名轮换、商业 API $100/月）→ **暂缓**，待再调研。业界模式两种：分区原生货币（DekuDeals/SteamDB，无法合计）vs 统一货币折算（GG.deals）——我们的"资产合计"需求选后者。语言与计价地区是独立维度（业界标准），不冲突。
+
+**实现**：
+- 常规设置新增"计价地区"（`PricingRegion`：跟随 Steam 账号/中国大陆/香港/日本/美国/英国/欧元区/韩国，`@AppStorage pricingRegion`，auto 用 `loccountrycode` 解析）。
+- `SteamPriceStore`（actor）：按 appid 磁盘缓存 24h（steam-prices.json），sweep 每请求间隔 1.6s 全量约 8 分钟，同步后后台跑。
+- `NintendoPriceStore`（actor）：titleId→nsuid 映射来自社区 blawar/titledb US.en.json（**只有美区数据完整**，映射表 7 天缓存，全量下载解析约 1 次/周）；价格批量 50 个/请求按美区美元价查询，**响应的 title_id 是 nsuid，需反向映射回 titleId 再入库**（首次实现踩坑：直接用 nsuid 做键导致汇总永远为空）。
+- `ExchangeRateStore`（actor）：frankfurter.app（ECB 日频免费）+ open.er-api.com 备源，内存缓存。
+- 展示：Steam 统计行 4 项、Nintendo 3 项，新增"游戏价值"=当前售价合计（任天堂美元价按汇率折算），`pricesDidChange` 通知驱动页面刷新。**页面只读缓存、永不触发网络**；清扫只在同步后后台执行 + 24h TTL。
+- 实测：Steam 284/312 定价（其余免费/无商店数据），当前合计 ¥22,974（原价 ¥29,296）；Nintendo 33/82 有美区价格（$1,239.43，未覆盖的是美区没有的日亚区游戏+titledb 数据集滞后）。
+- 已知限制：①任天堂价格统一美区美元（titledb 仅美区完整），非用户实际购买区；②titledb 覆盖 71%，新游戏可能滞后；③PSN 未接入，总览暂无合计；④折算汇率日频，不构成支付依据。
+
 ### 封面缓存重构：CoverStore（2026-09-25）
 
 用户观察到两个现象，根因不同：
