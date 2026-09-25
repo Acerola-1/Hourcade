@@ -18,6 +18,8 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>HourcadeAppGroup</key>
+    <string>$(DEVELOPMENT_TEAM).dev.acerola.Hourcade</string>
     <key>NSExtension</key>
     <dict>
         <key>NSExtensionPointIdentifier</key>

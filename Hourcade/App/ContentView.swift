@@ -1,30 +1,50 @@
 import SwiftUI
 
 private enum PreviewMode: String, CaseIterable, Identifiable {
-    case reference = "主方案"
-    case exploration = "早期探索稿"
+    case reference
+    case exploration
 
     var id: Self { self }
+    var title: String {
+        switch self {
+        case .reference: L10n.tr("主方案")
+        case .exploration: L10n.tr("早期探索稿")
+        }
+    }
 }
 
 struct WidgetStudioView: View {
-    @State private var selectedStyle: AggregateStyle = .hero
+    @Environment(\.locale) private var locale
+    @State private var selectedStyle: AggregateStyle = .heroNoValue
     @State private var previewMode: PreviewMode = .reference
-    @State private var featuredGameID = GameSnapshot.demo.heroCandidates[0].id
+    @State private var featuredGameID = ""
+    @State private var showsDemo = false
+    @State private var liveSnapshot = SteamWidgetStore.load()?.gameSnapshot ?? .empty
 
-    private let snapshot = GameSnapshot.demo
+    private var snapshot: GameSnapshot {
+        showsDemo || previewMode == .exploration ? .demo : liveSnapshot
+    }
 
     private var featuredGame: FeaturedGame {
         snapshot.heroCandidates.first { $0.id == featuredGameID } ?? snapshot.heroCandidates[0]
     }
 
     var body: some View {
+        let _ = locale
         ScrollView {
             VStack(alignment: .leading, spacing: 15) {
                 brand
                 modeSelector
                 introduction
                 styleSelector
+                if previewMode == .reference {
+                    Picker(L10n.tr("数据来源"), selection: $showsDemo) {
+                        Text(L10n.tr("真实数据")).tag(false)
+                        Text(L10n.tr("演示数据")).tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 240)
+                }
                 preview
                 footnote
             }
@@ -48,8 +68,11 @@ struct WidgetStudioView: View {
         }
         .frame(minWidth: 950, minHeight: 660)
         .preferredColorScheme(.dark)
-        .task(id: previewMode == .reference && (selectedStyle == .hero || selectedStyle == .heroNoValue)) {
-            guard previewMode == .reference && (selectedStyle == .hero || selectedStyle == .heroNoValue) else { return }
+        .onReceive(NotificationCenter.default.publisher(for: SteamWidgetStore.didChange)) { _ in
+            liveSnapshot = SteamWidgetStore.load()?.gameSnapshot ?? .empty
+        }
+        .task(id: previewMode == .reference && selectedStyle == .heroNoValue) {
+            guard previewMode == .reference && selectedStyle == .heroNoValue else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(8))
                 guard !Task.isCancelled else { break }
@@ -64,24 +87,26 @@ struct WidgetStudioView: View {
 
     private var modeSelector: some View {
         HStack {
-            Text("设计版本")
+            Text(L10n.tr("设计版本"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.65))
-            Picker("设计版本", selection: $previewMode) {
+            Picker(L10n.tr("设计版本"), selection: $previewMode) {
                 ForEach(PreviewMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+                    Text(mode.title).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 260)
+            .frame(width: 300)
             .labelsHidden()
             .onChange(of: previewMode) { _, mode in
                 if mode == .exploration && selectedStyle == .heroNoValue {
-                    selectedStyle = .hero
+                    selectedStyle = .atlas
                 }
             }
             Spacer()
-            Text(previewMode == .reference ? "A / A2 已按新需求调整 · B–D 参考总览图" : "保留此前的四张视觉实验")
+            Text(previewMode == .reference
+                 ? L10n.tr("A2 无金额版 · B–D 参考总览图")
+                 : L10n.tr("保留此前的视觉实验"))
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.55))
         }
@@ -98,12 +123,12 @@ struct WidgetStudioView: View {
                 Text("HOURCADE")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .tracking(1.1)
-                Text("Widget Studio")
+                Text(L10n.tr("组件工作室"))
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.60))
             }
             Spacer()
-            Text("DEMO · SAMPLE DATA")
+            Text(snapshot.isDemo ? L10n.tr("演示 · 示例数据") : L10n.tr("实时 · Steam 数据"))
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .tracking(0.8)
                 .foregroundStyle(.white.opacity(0.70))
@@ -117,19 +142,19 @@ struct WidgetStudioView: View {
     private var introduction: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(previewMode == .reference ? "主方案" : "早期探索稿") · 方案 \(selectedStyle.letter)")
+                Text(L10n.format("%@ · 方案 %@", previewMode.title, selectedStyle.letter))
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(1)
                     .foregroundStyle(.white.opacity(0.60))
                 Text(selectedStyle.title)
                     .font(.system(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                Text("Nintendo、PlayStation 与 Steam，一张卡片看完你的游戏生活。")
+                Text(L10n.tr("Nintendo、PlayStation 与 Steam，一张卡片看完你的游戏生活。"))
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.66))
             }
             Spacer()
-            Text("超大号 · 聚合组件")
+            Text(L10n.tr("超大号 · 聚合组件"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.74))
                 .padding(.horizontal, 12)
@@ -140,7 +165,7 @@ struct WidgetStudioView: View {
 
     private var styleSelector: some View {
         HStack(spacing: 8) {
-            ForEach(previewMode == .reference ? AggregateStyle.allCases : [.hero, .atlas, .platforms, .gallery]) { style in
+            ForEach(previewMode == .reference ? [.heroNoValue, .atlas, .platforms, .gallery] : [.atlas, .platforms, .gallery]) { (style: AggregateStyle) in
                 Button {
                     selectedStyle = style
                 } label: {
@@ -169,7 +194,7 @@ struct WidgetStudioView: View {
     private var preview: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
-                Text("桌面预览")
+                Text(L10n.tr("桌面预览"))
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
                 Text("720 × 360 pt")
@@ -200,9 +225,9 @@ struct WidgetStudioView: View {
     private var footnote: some View {
         HStack(spacing: 9) {
             Circle().fill(WidgetPalette.nintendo).frame(width: 6, height: 6)
-            Text(selectedStyle == .heroNoValue
-                 ? "演示数据：A2 只展示时长和游戏数，不显示金额；背景随机切换近 14 天游戏。"
-                 : "演示数据：A 显示累计时长、游戏库及估算标价；背景随机切换近 14 天游戏。")
+            Text(snapshot.isDemo
+                 ? L10n.tr("演示数据：保留主方案的示意数值与插画。")
+                 : L10n.tr("真实数据：按已接入平台的官方接口同步；逐日记录尚未提供，不填演示数值。"))
                 .font(.system(size: 11))
                 .foregroundStyle(.white.opacity(0.63))
             Spacer()

@@ -1,7 +1,7 @@
 import SwiftUI
 
 // The first four visual experiments remain available in the app's preview studio.
-// The WidgetKit extension uses AggregateCard, which follows the supplied A–D board.
+// The WidgetKit extension uses AggregateCard, which preserves the A2/B/C/D designs.
 struct ExplorationCard: View {
     let style: AggregateStyle
     let snapshot: GameSnapshot
@@ -10,22 +10,28 @@ struct ExplorationCard: View {
         GeometryReader { geometry in
             Group {
                 switch style {
-                case .hero, .heroNoValue: explorationHero
+                case .heroNoValue: explorationHero
                 case .atlas: explorationAtlas
                 case .platforms: explorationPlatforms
                 case .gallery: explorationGallery
                 }
             }
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
         }
+        .environment(\.locale, L10n.locale)
+    }
+
+    private var gameCount: String {
+        snapshot.hasData ? snapshot.totalGameCount.formatted(.number.locale(L10n.locale)) : "—"
     }
 
     private var explorationHero: some View {
         GeometryReader { geometry in
             ZStack {
-                Image("HeroAetherfall")
-                    .resizable()
+                GameArtwork(name: "HeroAetherfall", role: .hero, maxPixelSize: 1440)
                     .scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
@@ -34,8 +40,8 @@ struct ExplorationCard: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("HOURCADE").font(.system(size: 16, weight: .bold, design: .rounded)).tracking(2)
-                            Text("Your gaming life, at a glance.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.76))
+                            Text(L10n.widget("HOURCADE")).font(.system(size: 16, weight: .bold, design: .rounded)).tracking(2)
+                            Text(L10n.widget("Your gaming life, at a glance.")).font(.system(size: 11)).foregroundStyle(.white.opacity(0.76))
                         }
                         Spacer()
                         explorationBadge
@@ -43,16 +49,20 @@ struct ExplorationCard: View {
                     Spacer()
                     HStack(alignment: .bottom, spacing: 24) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("TOTAL PLAYTIME").font(.system(size: 10, weight: .semibold)).tracking(1.5).foregroundStyle(.white.opacity(0.78))
-                            Text(snapshot.totalPlayedMinutes.hoursLabel).font(.system(size: 52, weight: .bold, design: .rounded)).monospacedDigit()
-                            Text("\(snapshot.totalGameCount) games  ·  3 platforms").font(.system(size: 13)).foregroundStyle(.white.opacity(0.83))
+                            Text(L10n.widget("TOTAL PLAYTIME")).font(.system(size: 10, weight: .semibold)).tracking(1.5).foregroundStyle(.white.opacity(0.78))
+                            Text(snapshot.playtimeLabel).font(.system(size: 52, weight: .bold, design: .rounded)).monospacedDigit().minimumScaleFactor(0.6)
+                            Text(L10n.widget("%1$@ games  ·  %2$d platforms", gameCount, snapshot.connectedPlatformCount)).font(.system(size: 13)).foregroundStyle(.white.opacity(0.83))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(width: max(0, (geometry.size.width - 48 - 24) / 2), alignment: .leading)
                         VStack(alignment: .leading, spacing: 5) {
-                            Text("RECENTLY PLAYED").font(.system(size: 10, weight: .semibold)).tracking(1.5).foregroundStyle(.white.opacity(0.78))
-                            Text(snapshot.recentGames[0].title).font(.system(size: 24, weight: .bold))
-                            Text("Nintendo · \(snapshot.recentGames[0].weekMinutes.hoursMinutesLabel) this week")
-                                .font(.system(size: 11)).foregroundStyle(.white.opacity(0.88))
+                            Text(L10n.widget("RECENTLY PLAYED")).font(.system(size: 10, weight: .semibold)).tracking(1.5).foregroundStyle(.white.opacity(0.78))
+                            if let game = snapshot.recentGames.first {
+                                Text(game.title).font(.system(size: 24, weight: .bold)).lineLimit(2)
+                                Text(L10n.widget("%1$@ · %2$@ this week", game.platform.title, game.weekMinutes.hoursMinutesLabel))
+                                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.88))
+                            } else {
+                                Text(L10n.widget("No play history")).font(.system(size: 24, weight: .bold))
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -62,7 +72,7 @@ struct ExplorationCard: View {
                                 explorationPlatformMark(activity.platform, size: 27)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(activity.platform.title).font(.system(size: 10)).foregroundStyle(.white.opacity(0.73))
-                                    Text(activity.playedMinutes.hoursLabel).font(.system(size: 14, weight: .bold, design: .rounded))
+                                    Text(activity.playtimeLabel).font(.system(size: 14, weight: .bold, design: .rounded))
                                 }
                                 Spacer(minLength: 0)
                             }
@@ -85,8 +95,8 @@ struct ExplorationCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("HOURCADE").font(.system(size: 17, weight: .bold, design: .rounded)).tracking(1.6)
-                        Text("The shape of your playtime").font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text(L10n.widget("HOURCADE")).font(.system(size: 17, weight: .bold, design: .rounded)).tracking(1.6)
+                        Text(L10n.widget("The shape of your playtime")).font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                     Spacer()
                     explorationBadge(dark: true)
@@ -97,25 +107,28 @@ struct ExplorationCard: View {
                         Circle().trim(from: 0, to: 0.36).stroke(WidgetPalette.nintendo, lineWidth: 13).rotationEffect(.degrees(120))
                         Circle().trim(from: 0, to: 0.16).stroke(WidgetPalette.playStation, lineWidth: 13).rotationEffect(.degrees(-90))
                         VStack(spacing: 0) {
-                            Text(snapshot.totalPlayedMinutes.hoursLabel).font(.system(size: 20, weight: .bold, design: .rounded))
-                            Text("ALL TIME").font(.system(size: 8)).tracking(0.8).foregroundStyle(.secondary)
+                            Text(snapshot.playtimeLabel).font(.system(size: 20, weight: .bold, design: .rounded))
+                            Text(L10n.widget("ALL TIME")).font(.system(size: 8)).tracking(0.8).foregroundStyle(.secondary)
                         }
+                        .frame(width: 102)
                     }
                     .frame(width: 128, height: 128)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.widget("Total playtime %1$@", snapshot.playtimeLabel))
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(snapshot.platforms) { activity in
                             HStack(spacing: 6) {
                                 explorationPlatformMark(activity.platform, size: 21)
                                 Text(activity.platform.title).font(.system(size: 11))
                                 Spacer()
-                                Text(activity.playedMinutes.hoursLabel).font(.system(size: 11, weight: .bold))
+                                Text(activity.playtimeLabel).font(.system(size: 11, weight: .bold))
                             }
                         }
                     }
                     .frame(maxWidth: .infinity)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("THIS WEEK").font(.system(size: 10, weight: .semibold)).tracking(1.2)
+                            Text(L10n.widget("THIS WEEK")).font(.system(size: 10, weight: .semibold)).tracking(1.2)
                             Spacer()
                             Text(snapshot.weekPlayedMinutes.hoursMinutesLabel).font(.system(size: 19, weight: .bold, design: .rounded))
                         }
@@ -124,18 +137,19 @@ struct ExplorationCard: View {
                     .frame(maxWidth: .infinity)
                 }
                 .frame(maxHeight: .infinity)
-                Text("RECENT GAMES").font(.system(size: 10, weight: .semibold)).tracking(1.2)
+                Text(L10n.widget("RECENT GAMES")).font(.system(size: 10, weight: .semibold)).tracking(1.2)
                 HStack(spacing: 8) {
                     ForEach(snapshot.recentGames) { game in
                         HStack(spacing: 7) {
-                            Image(game.artworkName).resizable().scaledToFill().frame(width: 37, height: 44).clipShape(RoundedRectangle(cornerRadius: 7))
+                            GameArtwork(name: game.artworkName, role: .cover, maxPixelSize: 400).scaledToFill().frame(width: 37, height: 44).clipShape(RoundedRectangle(cornerRadius: 7))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(game.title).font(.system(size: 10, weight: .semibold)).lineLimit(1)
+                                Text(game.title).font(.system(size: 10, weight: .semibold)).lineLimit(2)
                                 Text(game.weekMinutes.hoursMinutesLabel).font(.system(size: 9)).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 0)
                         }
                         .frame(maxWidth: .infinity)
+                        .accessibilityElement(children: .combine)
                     }
                 }
                 .frame(height: 62)
@@ -158,9 +172,11 @@ struct ExplorationCard: View {
                             WidgetPalette.steam.frame(height: CGFloat(day.steamMinutes) / 360 * (geometry.size.height - 18))
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 4))
-                        Text(day.day).font(.system(size: 8)).foregroundStyle(.secondary)
+                        Text(L10n.widget(day.day)).font(.system(size: 8)).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.widget("%1$@, %2$@", L10n.widget(day.day), day.totalMinutes.hoursMinutesLabel))
                 }
             }
         }
@@ -172,8 +188,8 @@ struct ExplorationCard: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("HOURCADE").font(.system(size: 16, weight: .bold, design: .rounded)).tracking(1.6)
-                        Text("Three worlds. One player.").font(.system(size: 10)).foregroundStyle(.white.opacity(0.64))
+                        Text(L10n.widget("HOURCADE")).font(.system(size: 16, weight: .bold, design: .rounded)).tracking(1.6)
+                        Text(L10n.widget("Three worlds. One player.")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.64))
                     }
                     Spacer()
                     explorationBadge
@@ -181,11 +197,11 @@ struct ExplorationCard: View {
                 HStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
                         Spacer()
-                        Text("ALL-TIME PLAYTIME").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.65))
-                        Text(snapshot.totalPlayedMinutes.hoursLabel).font(.system(size: 37, weight: .bold, design: .rounded))
-                        Text("\(snapshot.totalGameCount) games").font(.system(size: 12)).foregroundStyle(.white.opacity(0.72))
+                        Text(L10n.widget("ALL-TIME PLAYTIME")).font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.65))
+                        Text(snapshot.playtimeLabel).font(.system(size: 37, weight: .bold, design: .rounded))
+                        Text(L10n.widget("%1$@ games", gameCount)).font(.system(size: 12)).foregroundStyle(.white.opacity(0.72))
                         Spacer()
-                        Text("Different worlds.\nOne gaming life.").font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.58))
+                        Text(L10n.widget("Different worlds.\nOne gaming life.")).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.58)).lineLimit(2)
                     }
                     .frame(width: 170, alignment: .leading)
                     ForEach(snapshot.platforms) { activity in
@@ -207,49 +223,51 @@ struct ExplorationCard: View {
         }
         return GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
-                Image(artwork).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                GameArtwork(name: artwork, role: .cover, maxPixelSize: 600).scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.25), .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 5) {
                     explorationPlatformMark(activity.platform, size: 27)
                     Spacer()
                     Text(activity.platform.title).font(.system(size: 11, weight: .semibold))
-                    Text(activity.playedMinutes.hoursLabel).font(.system(size: 21, weight: .bold, design: .rounded))
+                    Text(activity.playtimeLabel).font(.system(size: 21, weight: .bold, design: .rounded))
                     Capsule().fill(WidgetPalette.color(for: activity.platform)).frame(height: 4)
                 }
                 .padding(12)
             }
             .clipShape(RoundedRectangle(cornerRadius: 15))
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.widget("%1$@, %2$@", activity.platform.title, activity.isConnected ? activity.playtimeLabel : L10n.widget("Not connected")))
     }
 
     private var explorationGallery: some View {
         GeometryReader { geometry in
             ZStack {
-                Image("HeroAetherfall").resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).opacity(0.23).clipped()
+                GameArtwork(name: "HeroAetherfall", role: .hero, maxPixelSize: 1440).scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).opacity(0.23).clipped()
                 LinearGradient(colors: [WidgetPalette.ink.opacity(0.90), WidgetPalette.ink.opacity(0.80)], startPoint: .topLeading, endPoint: .bottomTrailing)
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("HOURCADE").font(.system(size: 16, weight: .bold, design: .rounded)).tracking(1.5)
-                            Text("A week across three worlds").font(.system(size: 10)).foregroundStyle(.white.opacity(0.70))
+                            Text(L10n.widget("HOURCADE")).font(.system(size: 16, weight: .bold, design: .rounded)).tracking(1.5)
+                            Text(L10n.widget("A week across three worlds")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.70))
                         }
                         Spacer()
                         explorationBadge
                     }
                     HStack(alignment: .firstTextBaseline, spacing: 9) {
                         Text(snapshot.weekPlayedMinutes.hoursMinutesLabel).font(.system(size: 39, weight: .bold, design: .rounded))
-                        Text("THIS WEEK").font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(.white.opacity(0.67))
+                        Text(L10n.widget("THIS WEEK")).font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(.white.opacity(0.67))
                         Spacer()
-                        Text("\(snapshot.totalGameCount) games · 3 platforms").font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                        Text(L10n.widget("%1$@ games  ·  %2$d platforms", gameCount, snapshot.connectedPlatformCount)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                     }
                     HStack(spacing: 9) {
                         ForEach(snapshot.recentGames) { game in
                             GeometryReader { tile in
                                 ZStack(alignment: .bottomLeading) {
-                                    Image(game.artworkName).resizable().scaledToFill().frame(width: tile.size.width, height: tile.size.height).clipped()
+                                    GameArtwork(name: game.artworkName, role: .cover, maxPixelSize: 600).scaledToFill().frame(width: tile.size.width, height: tile.size.height).clipped()
                                     LinearGradient(colors: [.clear, .black.opacity(0.80)], startPoint: .center, endPoint: .bottom)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(game.title).font(.system(size: 13, weight: .bold)).lineLimit(1)
+                                        Text(game.title).font(.system(size: 13, weight: .bold)).lineLimit(2)
                                         Text(game.weekMinutes.hoursMinutesLabel).font(.system(size: 10))
                                     }
                                     .padding(9)
@@ -257,6 +275,8 @@ struct ExplorationCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                             .frame(maxWidth: .infinity)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(L10n.widget("%1$@, %2$@", game.title, game.weekMinutes.hoursMinutesLabel))
                         }
                     }
                 }
@@ -269,13 +289,14 @@ struct ExplorationCard: View {
     private var explorationBadge: some View { explorationBadge(dark: false) }
 
     private func explorationBadge(dark: Bool) -> some View {
-        Text("DEMO")
+        Text(L10n.widget("DEMO"))
             .font(.system(size: 9, weight: .bold, design: .rounded))
             .tracking(1.2)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .foregroundStyle(dark ? WidgetPalette.ink.opacity(0.65) : Color.white.opacity(0.85))
             .background(dark ? Color.black.opacity(0.055) : Color.white.opacity(0.17), in: Capsule())
+            .accessibilityLabel(L10n.widget("Demo data"))
     }
 
     private func explorationPlatformMark(_ platform: GamePlatform, size: CGFloat) -> some View {
@@ -284,5 +305,6 @@ struct ExplorationCard: View {
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(WidgetPalette.color(for: platform), in: RoundedRectangle(cornerRadius: size * 0.28))
+            .accessibilityLabel(platform.title)
     }
 }

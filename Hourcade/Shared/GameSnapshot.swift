@@ -1,6 +1,100 @@
 import Foundation
 
-enum GamePlatform: String, CaseIterable, Identifiable, Sendable {
+struct SteamGame: Identifiable, Codable, Sendable {
+    let id: Int
+    let name: String
+    let lifetimeMinutes: Int
+    let fortnightMinutes: Int
+    // Unix timestamp from the API's `rtime_last_played`. Snapshots saved before
+    // this field shipped have none and fall back to library order.
+    var lastPlayedAt: Int? = nil
+
+    var lastPlayedDate: Date? {
+        guard let lastPlayedAt, lastPlayedAt > 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(lastPlayedAt))
+    }
+
+    var featuredGame: FeaturedGame {
+        FeaturedGame(id: String(id), title: name, platform: .steam, artworkName: "steam-\(id)", fortnightMinutes: fortnightMinutes, lifetimeMinutes: lifetimeMinutes)
+    }
+}
+
+struct SteamPlayer: Codable, Sendable {
+    let name: String
+    let avatarURL: URL?
+
+    var avatarName: String? {
+        avatarURL.map { "steam-avatar-" + $0.deletingPathExtension().lastPathComponent }
+    }
+}
+
+struct SteamLibrary: Codable, Sendable {
+    let games: [SteamGame]
+    let recent: [SteamGame]
+    var player: SteamPlayer? = nil
+
+    var totalMinutes: Int { games.reduce(0) { $0 + $1.lifetimeMinutes } }
+    var fortnightMinutes: Int { recent.reduce(0) { $0 + $1.fortnightMinutes } }
+}
+
+struct SteamSnapshot: Codable, Sendable {
+    let library: SteamLibrary
+    let syncedAt: Date
+
+    var gameSnapshot: GameSnapshot {
+        GameSnapshot(
+            playerName: library.player?.name ?? L10n.widget("Steam Player"),
+            platforms: [
+                PlatformActivity(platform: .steam, playedMinutes: library.totalMinutes, gameCount: library.games.count),
+                .disconnected(.nintendo),
+                .disconnected(.playStation)
+            ],
+            days: [],
+            recentGames: library.recent.filter { $0.fortnightMinutes > 0 }.sorted { $0.fortnightMinutes > $1.fortnightMinutes }.map {
+                RecentGame(id: String($0.id), title: $0.name, platform: .steam, artworkName: $0.featuredGame.artworkName, weekMinutes: $0.fortnightMinutes)
+            },
+            fortnightGames: library.recent.map(\.featuredGame),
+            allTimeTopGame: library.games.max(by: { $0.lifetimeMinutes < $1.lifetimeMinutes })?.featuredGame ?? .empty,
+            totalGameCount: library.games.count,
+            updatedAt: syncedAt,
+            isDemo: false,
+            avatarName: library.player?.avatarName
+        )
+    }
+}
+
+enum SteamWidgetStore {
+    static let didChange = Notification.Name("Hourcade.SteamSnapshotDidChange")
+
+    static var container: URL? {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "HourcadeAppGroup") as? String else { return nil }
+        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
+    }
+
+    private static var file: URL? { container?.appending(path: "steam-widget.json") }
+
+    static var artworkDirectory: URL? {
+        container?.appending(path: "Artwork", directoryHint: .isDirectory)
+    }
+
+    static func artworkURL(named name: String) -> URL? {
+        guard !name.isEmpty, name.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) || (97...122).contains($0) || $0 == 45 || $0 == 95 }) else { return nil }
+        return artworkDirectory?.appending(path: name + ".jpg")
+    }
+
+    static func load() -> SteamSnapshot? {
+        guard let file, let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONDecoder().decode(SteamSnapshot.self, from: data)
+    }
+
+    static func save(_ snapshot: SteamSnapshot) throws {
+        guard let file else { throw CocoaError(.fileNoSuchFile) }
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(snapshot).write(to: file, options: .atomic)
+    }
+}
+
+enum GamePlatform: String, CaseIterable, Identifiable, Codable, Sendable {
     case nintendo
     case playStation
     case steam
@@ -29,7 +123,7 @@ enum DataScope: Hashable, Sendable {
     case platform(GamePlatform)
 }
 
-enum ActivityPeriod: String, CaseIterable, Identifiable, Sendable {
+enum ActivityPeriod: String, CaseIterable, Identifiable, Codable, Sendable {
     case week
     case month
     case allTime
@@ -38,24 +132,23 @@ enum ActivityPeriod: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .week: "This Week"
-        case .month: "This Month"
-        case .allTime: "All Time"
+        case .week: L10n.widget("This Week")
+        case .month: L10n.widget("This Month")
+        case .allTime: L10n.widget("All Time")
         }
     }
 
     var playtimeTitle: String {
         switch self {
-        case .week: "Played This Week"
-        case .month: "Played This Month"
-        case .allTime: "Total Playtime"
+        case .week: L10n.widget("Played This Week")
+        case .month: L10n.widget("Played This Month")
+        case .allTime: L10n.widget("Total Playtime")
         }
     }
 
 }
 
 enum AggregateStyle: String, CaseIterable, Identifiable, Sendable {
-    case hero
     case heroNoValue
     case atlas
     case platforms
@@ -65,7 +158,6 @@ enum AggregateStyle: String, CaseIterable, Identifiable, Sendable {
 
     var letter: String {
         switch self {
-        case .hero: "A"
         case .heroNoValue: "A2"
         case .atlas: "B"
         case .platforms: "C"
@@ -75,24 +167,31 @@ enum AggregateStyle: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .hero: "英雄封面"
-        case .heroNoValue: "无金额版"
-        case .atlas: "数据概览"
-        case .platforms: "平台分栏"
-        case .gallery: "游戏墙"
+        case .heroNoValue: L10n.widget("Game Life")
+        case .atlas: L10n.widget("Data overview")
+        case .platforms: L10n.widget("Platforms")
+        case .gallery: L10n.widget("Game wall")
         }
     }
 
     var widgetKind: String { "Hourcade.Aggregate.\(rawValue)" }
+    var liveWidgetKind: String { "Hourcade.Live.\(rawValue)" }
 }
 
 struct PlatformActivity: Identifiable, Sendable {
     let platform: GamePlatform
     let playedMinutes: Int
     let gameCount: Int
-    let catalogValueYuan: Int
+    var isConnected = true
+    var hasPlaytime = true
 
     var id: GamePlatform { platform }
+    var playtimeLabel: String { isConnected && hasPlaytime ? playedMinutes.hoursLabel : "—" }
+    var gameCountLabel: String { isConnected ? gameCount.formatted() : "—" }
+
+    static func disconnected(_ platform: GamePlatform) -> PlatformActivity {
+        PlatformActivity(platform: platform, playedMinutes: 0, gameCount: 0, isConnected: false)
+    }
 }
 
 struct PeriodPlatformActivity: Identifiable, Sendable {
@@ -138,6 +237,10 @@ struct FeaturedGame: Identifiable, Sendable {
     let artworkName: String
     let fortnightMinutes: Int
     let lifetimeMinutes: Int
+
+    static var empty: FeaturedGame {
+        FeaturedGame(id: "empty", title: L10n.widget("No play history"), platform: .steam, artworkName: "", fortnightMinutes: 0, lifetimeMinutes: 0)
+    }
 }
 
 struct GameSnapshot: Sendable {
@@ -150,13 +253,27 @@ struct GameSnapshot: Sendable {
     let totalGameCount: Int
     let updatedAt: Date
     let isDemo: Bool
+    var avatarName: String? = nil
+    var platformHighlights: [FeaturedGame] = []
+
+    var connectedPlatformCount: Int { platforms.filter(\.isConnected).count }
+    var hasData: Bool { connectedPlatformCount > 0 }
+    var hasFortnightData: Bool { isDemo || platforms.contains { $0.platform == .steam && $0.isConnected } }
+    var playtimeLabel: String { platforms.contains { $0.isConnected && $0.hasPlaytime } ? totalPlayedMinutes.hoursLabel : "—" }
+    var recentMinutes: Int { isDemo ? weekPlayedMinutes : fortnightPlayedMinutes }
+    var recentPeriodTitle: String { L10n.widget(isDemo ? "This Week" : "Last 14 Days · Steam") }
+
+    static var empty: GameSnapshot {
+        GameSnapshot(
+            playerName: L10n.widget("Connect your gaming platforms"),
+            platforms: [.disconnected(.steam), .disconnected(.nintendo), .disconnected(.playStation)],
+            days: [], recentGames: [], fortnightGames: [], allTimeTopGame: .empty,
+            totalGameCount: 0, updatedAt: .distantPast, isDemo: false
+        )
+    }
 
     var totalPlayedMinutes: Int {
         platforms.reduce(0) { $0 + $1.playedMinutes }
-    }
-
-    var totalCatalogValueYuan: Int {
-        platforms.reduce(0) { $0 + $1.catalogValueYuan }
     }
 
     var fortnightPlayedMinutes: Int {
@@ -205,11 +322,11 @@ struct GameSnapshot: Sendable {
     }
 
     static let demo = GameSnapshot(
-        playerName: "Acerola",
+        playerName: "Player One",
         platforms: [
-            PlatformActivity(platform: .steam, playedMinutes: 4_164 * 60, gameCount: 279, catalogValueYuan: 18_460),
-            PlatformActivity(platform: .nintendo, playedMinutes: 1_292 * 60, gameCount: 82, catalogValueYuan: 15_200),
-            PlatformActivity(platform: .playStation, playedMinutes: 1_065 * 60, gameCount: 52, catalogValueYuan: 9_340)
+            PlatformActivity(platform: .steam, playedMinutes: 4_164 * 60, gameCount: 279),
+            PlatformActivity(platform: .nintendo, playedMinutes: 1_292 * 60, gameCount: 82),
+            PlatformActivity(platform: .playStation, playedMinutes: 1_065 * 60, gameCount: 52)
         ],
         days: [
             DailyPlay(day: "Mon", steamMinutes: 65, nintendoMinutes: 55, playStationMinutes: 30),
@@ -240,7 +357,6 @@ struct GameSnapshot: Sendable {
 }
 
 extension Int {
-    var hoursLabel: String { "\((self / 60).formatted())h" }
-    var hoursMinutesLabel: String { "\(self / 60)h \(self % 60)m" }
-    var yuanLabel: String { "¥\(self.formatted())" }
+    var hoursLabel: String { L10n.widget("%@h", (self / 60).formatted(.number.locale(L10n.locale))) }
+    var hoursMinutesLabel: String { L10n.widget("%dh %dm", self / 60, self % 60) }
 }

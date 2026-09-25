@@ -1,0 +1,535 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%1$@ games" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ games" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ 款游戏" } }
+      }
+    },
+    "%1$@ games  ·  %2$d / %3$d platforms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ games  ·  %2$d / %3$d platforms" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ 款游戏  ·  %2$d / %3$d 个平台" } }
+      }
+    },
+    "%1$@ games  ·  %2$d platforms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ games  ·  %2$d platforms" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ 款游戏  ·  %2$d 个平台" } }
+      }
+    },
+    "%1$@ · %2$@ this week" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ · %2$@ this week" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ · 本周 %2$@" } }
+      }
+    },
+    "%1$@, %2$@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@, %2$@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@，%2$@" } }
+      }
+    },
+    "%1$d / %2$d" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$d / %2$d" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$d / %2$d" } }
+      }
+    },
+    "%1$d minutes ago" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$d minutes ago" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$d 分钟前" } }
+      }
+    },
+    "%1$d%%" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$d%%" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$d%%" } }
+      }
+    },
+    "%1$d%% of playtime" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$d%% of playtime" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "占游玩时间 %1$d%%" } }
+      }
+    },
+    "%@h" : {
+      "comment" : "Model hour label; argument is the locale-formatted hour count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@h" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$@小时" } }
+      }
+    },
+    "%dh %dm" : {
+      "comment" : "Model duration label; arguments are hours and remaining minutes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$dh %2$dm" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%1$d小时%2$d分" } }
+      }
+    },
+    "+%1$d" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "+%1$d" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "+%1$d" } }
+      }
+    },
+    "A different world today,\na brighter you tomorrow." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A different world today,\na brighter you tomorrow." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "今天探索不同世界，\n明天遇见更好的自己。" } }
+      }
+    },
+    "A week across three worlds" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A week across three worlds" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "一周畅游三个世界" } }
+      }
+    },
+    "ALL TIME" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "ALL TIME" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全部时间" } }
+      }
+    },
+    "ALL-TIME PLAYTIME" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "ALL-TIME PLAYTIME" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "累计游玩时间" } }
+      }
+    },
+    "All Time" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "All Time" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全部时间" } }
+      }
+    },
+    "Connect a platform or sync play history" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connect a platform or sync play history" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "连接平台或同步游戏记录" } }
+      }
+    },
+    "Connect your gaming platforms" : {
+      "comment" : "Placeholder player identity for an unconnected library, not an external player name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Connect your gaming platforms" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "连接你的游戏平台" } }
+      }
+    },
+    "DEMO" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DEMO" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "演示" } }
+      }
+    },
+    "Data overview" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Data overview" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "数据概览" } }
+      }
+    },
+    "Demo data" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Demo data" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "演示数据" } }
+      }
+    },
+    "Different worlds.\nOne gaming life." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Different worlds.\nOne gaming life." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "不同的世界，\n同一个游戏人生。" } }
+      }
+    },
+    "FROM YOUR LAST 14 DAYS" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "FROM YOUR LAST 14 DAYS" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "来自你近 14 天的游玩" } }
+      }
+    },
+    "Fri" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fri" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周五" } }
+      }
+    },
+    "Game Life" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Game Life" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "游戏人生" } }
+      }
+    },
+    "Game wall" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Game wall" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "游戏墙" } }
+      }
+    },
+    "Games" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Games" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "游戏" } }
+      }
+    },
+    "HOURCADE" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "HOURCADE" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "HOURCADE" } }
+      }
+    },
+    "LAST 14 DAYS" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "LAST 14 DAYS" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "近 14 天" } }
+      }
+    },
+    "Last 14 Days · Steam" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 14 Days · Steam" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "近 14 天 · Steam" } }
+      }
+    },
+    "Last synced" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last synced" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上次同步" } }
+      }
+    },
+    "MOST PLAYED · ALL TIME" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "MOST PLAYED · ALL TIME" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全部时间 · 玩得最多" } }
+      }
+    },
+    "Mon" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Mon" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周一" } }
+      }
+    },
+    "More" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "More" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "更多" } }
+      }
+    },
+    "No daily history yet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No daily history yet" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "逐日记录尚未建立" } }
+      }
+    },
+    "No history" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No history" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂无记录" } }
+      }
+    },
+    "No more games" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No more games" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂无更多" } }
+      }
+    },
+    "No play history" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No play history" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "暂无游玩记录" } }
+      }
+    },
+    "Not connected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not connected" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未连接" } }
+      }
+    },
+    "Open app to connect" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open app to connect" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开 App 连接" } }
+      }
+    },
+    "Platforms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Platforms" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "平台" } }
+      }
+    },
+    "Play More. Live Better." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play More. Live Better." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尽情游玩，热爱生活。" } }
+      }
+    },
+    "Play games. Be happy." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play games. Be happy." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "玩游戏，享快乐。" } }
+      }
+    },
+    "Play more. Live better." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Play more. Live better." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尽情游玩，热爱生活。" } }
+      }
+    },
+    "Played %1$@ all time" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Played %1$@ all time" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "累计游玩 %1$@" } }
+      }
+    },
+    "Played %1$@ in 14 days" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Played %1$@ in 14 days" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "近 14 天游玩 %1$@" } }
+      }
+    },
+    "Played This Month" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Played This Month" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本月游玩" } }
+      }
+    },
+    "Played This Week" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Played This Week" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本周游玩" } }
+      }
+    },
+    "RECENT GAMES" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "RECENT GAMES" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近游玩的游戏" } }
+      }
+    },
+    "RECENTLY PLAYED" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "RECENTLY PLAYED" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近游玩" } }
+      }
+    },
+    "Recently Played" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recently Played" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最近游玩" } }
+      }
+    },
+    "Same Games. A Bigger You." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Same Games. A Bigger You." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "熟悉的游戏，成长的自己。" } }
+      }
+    },
+    "Sat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sat" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周六" } }
+      }
+    },
+    "See All ›" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "See All ›" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看全部 ›" } }
+      }
+    },
+    "Steam Player" : {
+      "comment" : "Fallback identity when Steam has not supplied a player name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Steam Player" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Steam 玩家" } }
+      }
+    },
+    "Steam · Last 14 Days" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Steam · Last 14 Days" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Steam · 近 14 天" } }
+      }
+    },
+    "Sun" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sun" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周日" } }
+      }
+    },
+    "THIS WEEK" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "THIS WEEK" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本周" } }
+      }
+    },
+    "TOTAL PLAYTIME" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "TOTAL PLAYTIME" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总游玩时间" } }
+      }
+    },
+    "The shape of your playtime" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The shape of your playtime" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "游玩时光，一目了然" } }
+      }
+    },
+    "This Month" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This Month" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本月" } }
+      }
+    },
+    "This Week" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This Week" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本周" } }
+      }
+    },
+    "Three worlds. One player." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Three worlds. One player." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "三个世界，同一个玩家。" } }
+      }
+    },
+    "Thu" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Thu" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周四" } }
+      }
+    },
+    "Time range" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Time range" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "时间范围" } }
+      }
+    },
+    "Total" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Total" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总计" } }
+      }
+    },
+    "Total Playtime" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Total Playtime" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总游玩时间" } }
+      }
+    },
+    "Total Playtime · All Time" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Total Playtime · All Time" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总游玩时间 · 全部时间" } }
+      }
+    },
+    "Total playtime %1$@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Total playtime %1$@" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "总游玩时间 %1$@" } }
+      }
+    },
+    "Tue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Tue" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周二" } }
+      }
+    },
+    "Updated" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Updated" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已更新" } }
+      }
+    },
+    "Wed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Wed" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "周三" } }
+      }
+    },
+    "Your gaming life, at a glance." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your gaming life, at a glance." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "你的游戏生活，一目了然。" } }
+      }
+    },
+    "“ Good games\nmake a brighter day." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "“ Good games\nmake a brighter day." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "“ 好游戏，\n让每一天更美好。" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -20,9 +20,16 @@
 		00000000000000000000002B = {isa = PBXBuildFile; fileRef = 00000000000000000000001A; };
 		00000000000000000000002C = {isa = PBXBuildFile; fileRef = 00000000000000000000001B; };
 		00000000000000000000002D = {isa = PBXBuildFile; fileRef = 00000000000000000000001C; };
-		00000000000000000000002E = {isa = PBXBuildFile; fileRef = 00000000000000000000001D; };
 		00000000000000000000002F = {isa = PBXBuildFile; fileRef = 00000000000000000000001E; };
 		00000000000000000000003A = {isa = PBXBuildFile; fileRef = 00000000000000000000001F; };
+		000000000000000000000080 = {isa = PBXBuildFile; fileRef = 000000000000000000000090; };
+		000000000000000000000081 = {isa = PBXBuildFile; fileRef = 000000000000000000000090; };
+		000000000000000000000082 = {isa = PBXBuildFile; fileRef = 000000000000000000000091; };
+		000000000000000000000083 = {isa = PBXBuildFile; fileRef = 000000000000000000000091; };
+		000000000000000000000084 = {isa = PBXBuildFile; fileRef = 000000000000000000000092; };
+		000000000000000000000085 = {isa = PBXBuildFile; fileRef = 000000000000000000000092; };
+		000000000000000000000086 = {isa = PBXBuildFile; fileRef = 000000000000000000000093; };
+		000000000000000000000087 = {isa = PBXBuildFile; fileRef = 000000000000000000000093; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,9 +68,16 @@
 		00000000000000000000001A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDashboard.swift; sourceTree = "<group>"; };
 		00000000000000000000001B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SteamAPI.swift; sourceTree = "<group>"; };
 		00000000000000000000001C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PSNAPI.swift; sourceTree = "<group>"; };
-		00000000000000000000001D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NintendoCLI.swift; sourceTree = "<group>"; };
 		00000000000000000000001E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		00000000000000000000001F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PSNWebLogin.swift; sourceTree = "<group>"; };
+		00000000000000000000001D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NintendoWebLogin.swift; sourceTree = "<group>"; };
+		00000000000000000000003B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NintendoAPI.swift; sourceTree = "<group>"; };
+		00000000000000000000002E = {isa = PBXBuildFile; fileRef = 00000000000000000000001D; };
+		00000000000000000000003C = {isa = PBXBuildFile; fileRef = 00000000000000000000003B; };
+		000000000000000000000090 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		000000000000000000000091 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformSnapshots.swift; sourceTree = "<group>"; };
+		000000000000000000000092 = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = App.xcstrings; sourceTree = "<group>"; };
+		000000000000000000000093 = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Widgets.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,13 +105,13 @@
 		};
 		000000000000000000000005 = {
 			isa = PBXGroup;
-			children = (000000000000000000000012, 000000000000000000000013, 000000000000000000000019, 00000000000000000000001A, 00000000000000000000001B, 00000000000000000000001C, 00000000000000000000001D, 00000000000000000000001E, 00000000000000000000001F, );
+			children = (000000000000000000000012, 000000000000000000000013, 000000000000000000000019, 00000000000000000000001A, 00000000000000000000001B, 00000000000000000000001C, 00000000000000000000001D, 00000000000000000000003B, 00000000000000000000001E, 00000000000000000000001F, );
 			path = App;
 			sourceTree = "<group>";
 		};
 		000000000000000000000006 = {
 			isa = PBXGroup;
-			children = (000000000000000000000014, 000000000000000000000017, 000000000000000000000018, );
+			children = (000000000000000000000014, 000000000000000000000017, 000000000000000000000018, 000000000000000000000090, 000000000000000000000091, 000000000000000000000092, 000000000000000000000093, );
 			path = Shared;
 			sourceTree = "<group>";
 		};
@@ -149,7 +163,7 @@
 			compatibilityVersion = "Xcode 16.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (en, Base, );
+			knownRegions = (en, "zh-Hans", Base, );
 			mainGroup = 000000000000000000000002;
 			productRefGroup = 000000000000000000000003;
 			projectDirPath = "";
@@ -162,13 +176,13 @@
 		000000000000000000000032 = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (000000000000000000000028, );
+			files = (000000000000000000000028, 000000000000000000000084, 000000000000000000000086, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		000000000000000000000036 = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (000000000000000000000029, );
+			files = (000000000000000000000029, 000000000000000000000085, 000000000000000000000087, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -177,13 +191,13 @@
 		000000000000000000000030 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (000000000000000000000020, 000000000000000000000021, 000000000000000000000022, 000000000000000000000026, 00000000000000000000002A, 00000000000000000000002B, 00000000000000000000002C, 00000000000000000000002D, 00000000000000000000002E, 00000000000000000000002F, 00000000000000000000003A, );
+			files = (000000000000000000000020, 000000000000000000000021, 000000000000000000000022, 000000000000000000000026, 00000000000000000000002A, 00000000000000000000002B, 00000000000000000000002C, 00000000000000000000002D, 00000000000000000000002E, 00000000000000000000003C, 00000000000000000000002F, 00000000000000000000003A, 000000000000000000000080, 000000000000000000000082, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		000000000000000000000034 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (000000000000000000000023, 000000000000000000000024, 000000000000000000000027, );
+			files = (000000000000000000000023, 000000000000000000000024, 000000000000000000000027, 000000000000000000000081, 000000000000000000000083, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
@@ -198,7 +212,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				SDKROOT = macosx;
@@ -214,7 +228,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				SDKROOT = macosx;
@@ -228,8 +242,11 @@
 		000000000000000000000052 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Hourcade/App/Hourcade.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VTQ6S5M4K3;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Hourcade/App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Hourcade;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
@@ -242,8 +259,11 @@
 		000000000000000000000053 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Hourcade/App/Hourcade.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VTQ6S5M4K3;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Hourcade/App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Hourcade;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", );
@@ -257,7 +277,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Hourcade/Widgets/HourcadeWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VTQ6S5M4K3;
+				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Hourcade/Widgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );
@@ -272,7 +295,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Hourcade/Widgets/HourcadeWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = VTQ6S5M4K3;
+				ENABLE_APP_SANDBOX = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Hourcade/Widgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks", );

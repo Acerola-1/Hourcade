@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Hourcade controller and clock icon concept">
+  <rect x="36" y="36" width="952" height="952" rx="216" fill="#F4F0E8"/>
+  <path fill="#202939" d="M336 320c-72 0-128 42-150 112l-77 247c-22 72 18 143 88 155 43 7 81-7 111-42l91-105c15-18 36-28 60-28h106c24 0 45 10 60 28l91 105c30 35 68 49 111 42 70-12 110-83 88-155l-77-247c-22-70-78-112-150-112h-61c-17 0-31 5-45 16l-21 18c-11 9-24 14-38 14h-22c-14 0-27-5-38-14l-21-18c-14-11-28-16-45-16z"/>
+  <circle cx="512" cy="510" r="156" fill="#F4F0E8"/>
+  <g stroke="#202939" stroke-width="14" stroke-linecap="round">
+    <path d="M512 385v21M512 614v21M387 510h21M616 510h21"/>
+    <path d="M512 510l-63-43" stroke-width="22"/>
+  </g>
+  <path d="M512 510l82-70" fill="none" stroke="#DC735A" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="512" cy="510" r="16" fill="#202939"/>
+  <path d="M280 512v-82m-41 41h82" fill="none" stroke="#F4F0E8" stroke-width="35" stroke-linecap="round"/>
+  <circle cx="747" cy="455" r="27" fill="#DC735A"/>
+  <circle cx="697" cy="522" r="27" fill="#DC735A"/>
+</svg>
