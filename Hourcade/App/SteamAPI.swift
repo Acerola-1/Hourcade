@@ -53,12 +53,25 @@ enum SteamAPI {
         let avatarfull: String?
     }
 
+    private struct LevelEnvelope: Decodable, Sendable {
+        let response: PlayerLevel?
+    }
+
+    private struct PlayerLevel: Decodable, Sendable {
+        let player_level: Int?
+    }
+
     static func load(account: String, key: String) async throws -> SteamLibrary {
         let steamID = try await resolveSteamID(account, key: key)
         async let profile: PlayersEnvelope? = try? get(
             "/ISteamUser/GetPlayerSummaries/v2/",
             key: key,
             parameters: ["steamids": steamID]
+        )
+        async let level: LevelEnvelope? = try? get(
+            "/IPlayerService/GetSteamLevel/v1/",
+            key: key,
+            parameters: ["steamid": steamID]
         )
         let owned: GamesEnvelope = try await get(
             "/IPlayerService/GetOwnedGames/v1/",
@@ -78,11 +91,12 @@ enum SteamAPI {
             SteamGame(id: $0.appid, name: $0.name ?? names[$0.appid] ?? "App \($0.appid)", lifetimeMinutes: $0.playtime_forever ?? 0, fortnightMinutes: $0.playtime_2weeks ?? 0, lastPlayedAt: $0.rtime_last_played)
         }
         let summary = await profile
+        let levelSummary = await level
         let player = summary?.response.players.first(where: { $0.steamid == steamID }).map { dto in
             let avatarURL = dto.avatarfull.flatMap { URL(string: $0) }.flatMap {
                 isAllowedAvatarURL($0) ? $0 : nil
             }
-            return SteamPlayer(name: dto.personaname, avatarURL: avatarURL)
+            return SteamPlayer(name: dto.personaname, avatarURL: avatarURL, steamID: dto.steamid, level: levelSummary?.response?.player_level)
         }
         return SteamLibrary(games: all, recent: latest, player: player)
     }
@@ -440,4 +454,75 @@ private enum SteamError: LocalizedError {
         case .http(let code): "Steam API 请求失败（HTTP \(code)）；请检查密钥和资料隐私设置"
         }
     }
+}
+
+/// Per-game achievement totals, loaded on demand by the Steam page and cached
+/// on disk for a day — the Web API needs one request per game, so syncing
+/// never waits on this.
+actor SteamAchievementStore {
+    static let shared = SteamAchievementStore()
+
+    struct Entry: Codable, Sendable {
+        let earned: Int
+        let total: Int
+        let fetchedAt: Date
+    }
+
+    private var cache: [Int: Entry]?
+
+    private static var file: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/achievements.json")
+    }
+
+    func summary(appID: Int, steamID: String, key: String) async -> Entry? {
+        loadFromDisk()
+        if let entry = cache?[appID], Date().timeIntervalSince(entry.fetchedAt) < 86_400 {
+            return entry
+        }
+        guard var components = URLComponents(string: "https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v1/") else { return nil }
+        components.queryItems = [
+            URLQueryItem(name: "key", value: key),
+            URLQueryItem(name: "steamid", value: steamID),
+            URLQueryItem(name: "appid", value: String(appID))
+        ]
+        var request = URLRequest(url: components.url!)
+        request.timeoutInterval = 15
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let envelope = try? JSONDecoder().decode(StatsEnvelope.self, from: data),
+              let achievements = envelope.playerstats?.achievements, !achievements.isEmpty
+        else { return nil }
+        let entry = Entry(earned: achievements.filter { $0.achieved == 1 }.count, total: achievements.count, fetchedAt: .now)
+        cache?[appID] = entry
+        persist()
+        return entry
+    }
+
+    private func loadFromDisk() {
+        guard cache == nil else { return }
+        guard let file = Self.file, let data = try? Data(contentsOf: file) else {
+            cache = [:]
+            return
+        }
+        cache = (try? JSONDecoder().decode([Int: Entry].self, from: data)) ?? [:]
+    }
+
+    private func persist() {
+        guard let file = Self.file, let cache, let data = try? JSONEncoder().encode(cache) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
+    }
+}
+
+private struct StatsEnvelope: Decodable {
+    let playerstats: PlayerStats?
+}
+
+private struct PlayerStats: Decodable {
+    let achievements: [AchievementState]?
+}
+
+private struct AchievementState: Decodable {
+    let achieved: Int?
 }

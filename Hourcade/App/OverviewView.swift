@@ -1,4 +1,5 @@
 import SwiftUI
+import CryptoKit
 
 struct OverviewView: View {
     @Environment(\.locale) private var locale
@@ -80,10 +81,12 @@ struct OverviewView: View {
                     .foregroundStyle(.secondary)
                 Text(L10n.tr("你的游戏时间"))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                Text(connectedCount == 0
-                     ? L10n.tr("连接平台后，游玩记录会汇集在这里。")
-                     : L10n.format("来自 %lld 个已连接平台", connectedCount))
-                    .foregroundStyle(.secondary)
+                if connectedCount == 0 {
+                    // Only shown while there is nothing to summarize; once
+                    // platforms connect, the summary card carries the counts.
+                    Text(L10n.tr("连接平台后，游玩记录会汇集在这里。"))
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if connectedAny {
@@ -323,75 +326,6 @@ struct OverviewView: View {
         .background(.quaternary.opacity(0.40), in: RoundedRectangle(cornerRadius: 18))
     }
 
-    /// Cover loader with a fallback chain. Steam's portrait library art renders
-    /// sharply at tile size; games without it (and everything published after
-    /// the 2023 asset migration, which responds on no fixed `/steam/apps/{id}`
-    /// path at all) fall through to the wide header and then one `appdetails`
-    /// lookup to resolve the hashed store asset URL.
-    private struct GameCover: View {
-        let primary: URL?
-        let fallback: URL?
-        let storeAppID: Int?
-        @State private var data: Data?
-
-        var body: some View {
-            ZStack {
-                if let data, let image = NSImage(data: data) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    RoundedRectangle(cornerRadius: 10).fill(.quaternary)
-                }
-            }
-            .frame(width: 56, height: 56)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .accessibilityHidden(true)
-            .task(id: [primary, fallback].compactMap { $0 }) {
-                if let loaded = await Self.load(from: primary) {
-                    data = loaded
-                } else if let loaded = await Self.load(from: fallback) {
-                    data = loaded
-                } else if let storeAppID, let resolved = await Self.storeHeaderURL(for: storeAppID) {
-                    data = await Self.load(from: resolved)
-                }
-            }
-        }
-
-        private static func load(from url: URL?) async -> Data? {
-            guard let url else { return nil }
-            if let (data, response) = try? await URLSession.shared.data(from: url),
-               (response as? HTTPURLResponse)?.statusCode == 200 {
-                return data
-            }
-            return nil
-        }
-
-        @MainActor private static var resolvedHeaders: [Int: URL] = [:]
-        @MainActor private static var missingHeaders: Set<Int> = []
-
-        /// One `appdetails` call per unresolved game, cached for the session.
-        @MainActor
-        private static func storeHeaderURL(for appID: Int) async -> URL? {
-            if missingHeaders.contains(appID) { return nil }
-            if let resolved = resolvedHeaders[appID] { return resolved }
-            guard let url = URL(string: "https://store.steampowered.com/api/appdetails?appids=\(appID)&filters=basic"),
-                  let (data, response) = try? await URLSession.shared.data(from: url),
-                  (response as? HTTPURLResponse)?.statusCode == 200,
-                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let entry = payload[String(appID)] as? [String: Any],
-                  let basic = entry["data"] as? [String: Any],
-                  let header = basic["header_image"] as? String,
-                  let remote = URL(string: header)
-            else {
-                missingHeaders.insert(appID)
-                return nil
-            }
-            resolvedHeaders[appID] = remote
-            return remote
-        }
-    }
-
     private func caption(for game: RecentGame) -> String {
         let hours = L10n.format("%lld小时 %lld分钟", game.minutes / 60, game.minutes % 60)
         return game.minutesIsRecentWindow
@@ -405,5 +339,161 @@ struct OverviewView: View {
         formatter.locale = L10n.locale
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+/// Shared cover pipeline for every in-app artwork tile: memory → disk →
+/// network. Steam covers whose fixed CDN paths 404 (everything published after
+/// the 2023 asset migration) get their hashed store asset resolved through one
+/// `appdetails` lookup; positive resolutions persist to disk, failures are
+/// retried after an hour.
+actor CoverStore {
+    static let shared = CoverStore()
+
+    private var memory: [String: CGImage] = [:]
+    private var resolved: [Int: ResolvedHeader]?
+    private var missingSince: [Int: Date] = [:]
+
+    private struct ResolvedHeader: Codable {
+        let url: URL
+        let fetchedAt: Date
+    }
+
+    static var coversDirectory: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/covers", directoryHint: .isDirectory)
+    }
+
+    private static var resolvedFile: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/steam-headers.json")
+    }
+
+    func image(primary: URL?, fallback: URL?, appID: Int?) async -> CGImage? {
+        let key = appID.map { "steam-\($0)" } ?? primary?.absoluteString ?? ""
+        guard !key.isEmpty else { return nil }
+        if let hit = memory[key] { return hit }
+        if let data = diskData(key), let image = decode(data) {
+            memory[key] = image
+            return image
+        }
+
+        var data = await download(primary)
+        if data == nil { data = await download(fallback) }
+        if data == nil, let appID, let resolvedURL = await storeHeaderURL(for: appID) {
+            data = await download(resolvedURL)
+        }
+        guard let data, let image = decode(data) else { return nil }
+        memory[key] = image
+        persist(data, key: key)
+        return image
+    }
+
+    /// Wipes the in-app cover cache (disk and memory).
+    func clear() {
+        memory.removeAll()
+        resolved = nil
+        missingSince.removeAll()
+        if let dir = Self.coversDirectory {
+            try? FileManager.default.removeItem(at: dir)
+        }
+        if let file = Self.resolvedFile {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    private func download(_ url: URL?) async -> Data? {
+        guard let url else { return nil }
+        guard let (data, response) = try? await URLSession.shared.data(from: url),
+              (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return nil }
+        return data
+    }
+
+    private func decode(_ data: Data) -> CGImage? {
+        NSBitmapImageRep(data: data)?.cgImage
+    }
+
+    private func diskData(_ key: String) -> Data? {
+        guard let file = Self.coversDirectory?.appending(path: "\(Self.diskName(key)).jpg") else { return nil }
+        return try? Data(contentsOf: file)
+    }
+
+    private func persist(_ data: Data, key: String) {
+        guard let dir = Self.coversDirectory else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: dir.appending(path: "\(Self.diskName(key)).jpg"), options: .atomic)
+    }
+
+    private static func diskName(_ key: String) -> String {
+        String(SHA256.hash(data: Data(key.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined())
+    }
+
+    private func storeHeaderURL(for appID: Int) async -> URL? {
+        if resolved == nil {
+            if let file = Self.resolvedFile, let data = try? Data(contentsOf: file) {
+                resolved = (try? JSONDecoder().decode([Int: ResolvedHeader].self, from: data)) ?? [:]
+            } else {
+                resolved = [:]
+            }
+        }
+        if let hit = resolved?[appID] { return hit.url }
+        if let since = missingSince[appID], Date().timeIntervalSince(since) < 3_600 { return nil }
+
+        var components = URLComponents(string: "https://store.steampowered.com/api/appdetails?appids=\(appID)&filters=basic")!
+        var request = URLRequest(url: components.url!)
+        var remote: URL?
+        if let (data, response) = try? await URLSession.shared.data(for: request),
+           (response as? HTTPURLResponse)?.statusCode == 200,
+           let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // Steam sometimes re-keys the response under a migrated internal
+            // appid; match on the inner payload instead of the wrapper key.
+            let entry = payload.values
+                .compactMap { $0 as? [String: Any] }
+                .first(where: { ($0["success"] as? Bool) == true })?["data"] as? [String: Any]
+            if let header = entry?["header_image"] as? String {
+                remote = URL(string: header)
+            }
+        }
+        guard let remote else {
+            if missingSince[appID] == nil { missingSince[appID] = .now }
+            return nil
+        }
+        missingSince[appID] = nil
+        resolved?[appID] = ResolvedHeader(url: remote, fetchedAt: .now)
+        if let file = Self.resolvedFile, let resolved, let data = try? JSONEncoder().encode(resolved) {
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
+        return remote
+    }
+}
+
+/// Thin tile view over the shared cover pipeline; falls back to a plain
+/// rounded rectangle while loading or when every source fails.
+struct GameCover: View {
+    let primary: URL?
+    let fallback: URL?
+    let storeAppID: Int?
+    var size: CGSize = CGSize(width: 56, height: 56)
+    @State private var image: CGImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(decorative: image, scale: 2)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+            } else {
+                RoundedRectangle(cornerRadius: 10).fill(.quaternary)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityHidden(true)
+        .task(id: "\(primary?.absoluteString ?? "")|\(fallback?.absoluteString ?? "")|\(storeAppID ?? 0)") {
+            image = await CoverStore.shared.image(primary: primary, fallback: fallback, appID: storeAppID)
+        }
     }
 }

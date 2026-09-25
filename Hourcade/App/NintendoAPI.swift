@@ -33,6 +33,7 @@ enum NintendoAPI {
     struct Sync: Sendable {
         let games: [NintendoGame]
         let accountName: String?
+        let avatarURL: URL?
         // The durable credential. A fresh login hands back a new one; the caller
         // stores it, since it is what every later sync is derived from.
         let sessionToken: String
@@ -100,14 +101,15 @@ enum NintendoAPI {
 
         let tokens = try await deriveTokens(sessionToken: sessionToken)
 
-        // The nickname is presentation only; the history never depends on it.
-        let accountName: String?
+        // The nickname and avatar are presentation only; the history never
+        // depends on them.
+        let profile: (name: String?, avatar: URL?)?
         do {
-            accountName = try await accountNickname(accessToken: tokens.access_token)
+            profile = try await accountProfile(accessToken: tokens.access_token)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            accountName = nil
+            profile = nil
         }
 
         // The API takes either token and rejects one or the other as Nintendo
@@ -118,7 +120,7 @@ enum NintendoAPI {
         } catch let error as NintendoError where error == .expiredSession {
             games = try await playHistories(bearer: tokens.access_token)
         }
-        return Sync(games: games, accountName: accountName, sessionToken: sessionToken)
+        return Sync(games: games, accountName: profile?.name, avatarURL: profile?.avatar, sessionToken: sessionToken)
     }
 
     // MARK: Requests
@@ -134,10 +136,12 @@ enum NintendoAPI {
 
     private struct AccountProfile: Decodable {
         let nickname: String?
+        let iconUri: String?
     }
 
     private struct PlayHistoriesResponse: Decodable {
         let playHistories: [PlayHistory]
+        let recentPlayHistories: [RecentPlayHistory]?
     }
 
     private struct PlayHistory: Decodable {
@@ -147,6 +151,16 @@ enum NintendoAPI {
         let imageUrl: String?
         let firstPlayedAt: String?
         let lastPlayedAt: String?
+        let totalPlayedMinutes: Int?
+    }
+
+    private struct RecentPlayHistory: Decodable {
+        let playedDate: String?
+        let dailyPlayHistories: [DailyPlayRecord]?
+    }
+
+    private struct DailyPlayRecord: Decodable {
+        let titleId: String?
         let totalPlayedMinutes: Int?
     }
 
@@ -182,18 +196,18 @@ enum NintendoAPI {
         return try await decode(request)
     }
 
-    private static func accountNickname(accessToken: String) async throws -> String? {
+    private static func accountProfile(accessToken: String) async throws -> (name: String?, avatar: URL?) {
         var request = URLRequest(url: URL(string: "https://api.accounts.nintendo.com/2.0.0/users/me")!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         do {
             let profile: AccountProfile = try await decode(request)
-            return nonempty(profile.nickname)
+            return (nonempty(profile.nickname), nonempty(profile.iconUri).flatMap(URL.init(string:)))
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            return nil
+            return (nil, nil)
         }
     }
 
@@ -204,6 +218,23 @@ enum NintendoAPI {
         request.setValue(locale, forHTTPHeaderField: "Gentry-Locale")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let response: PlayHistoriesResponse = try await decode(request)
+
+        // The two-week column is derived from the daily records the API ships
+        // alongside the totals; whatever window they cover is what we sum.
+        var fortnight: [String: Int] = [:]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = .current
+        let cutoff = formatter.string(from: Date(timeIntervalSinceNow: -14 * 86_400))
+        for day in response.recentPlayHistories ?? [] {
+            guard let playedDate = day.playedDate, String(playedDate.prefix(10)) >= cutoff else { continue }
+            for record in day.dailyPlayHistories ?? [] {
+                guard let titleId = nonempty(record.titleId) else { continue }
+                fortnight[titleId, default: 0] += max(record.totalPlayedMinutes ?? 0, 0)
+            }
+        }
+
         return response.playHistories.compactMap { entry in
             guard let name = nonempty(entry.titleName) else { return nil }
             return NintendoGame(
@@ -213,6 +244,7 @@ enum NintendoAPI {
                 totalPlayTime: max(entry.totalPlayedMinutes ?? 0, 0),
                 firstPlayedAt: unixSeconds(entry.firstPlayedAt),
                 lastPlayedAt: unixSeconds(entry.lastPlayedAt),
+                fortnightMinutes: fortnight[entry.titleId] ?? 0,
                 titleId: nonempty(entry.titleId)
             )
         }

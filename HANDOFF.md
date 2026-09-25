@@ -183,7 +183,50 @@ PlayLog 返回游戏名称、图片、商店链接、累计游玩分钟、首次
   - PSN：`gamelist/v2` 的 `lastPlayedDateTime`（ISO 字符串）早就在模型里，新增 `lastPlayedDate` 计算属性 + `SnapshotDates`（`PlatformSnapshots.swift`）宽容解析（fractional ISO → ISO → 无时区 ISO）。
 - `OverviewView` 的近期板块改为 `RecentGame` 聚合：每平台按 last-played 取前 6 候选，合并按时间倒序取前 8 行；行内 = 56×56 封面（AsyncImage 直连平台 CDN）+ 平台角标（`AccountPlatformMark`）+ 游戏名 + "平台 · 近两周/总计 X小时Y分钟" 副标题 + 右侧相对时间（`RelativeDateTimeFormatter`）。无日期的行沉底、按平台顺序排。
 - 本地化：新增"近期游玩"、"%1$@ · 近两周 %2$@"、"%1$@ · 总计 %2$@"；删除"Steam 近期游玩"、"过去两周"（133 → 134 条）。
+- 总览头部小字"来自 N 个已连接平台"已按用户要求删除（汇总卡片里已有平台数；空状态提示"连接平台后…"保留）
 - **旧快照没有新字段**：升级后需要点一次"同步全部"，三个平台的 last-played 才会落库。
+
+### 封面缓存重构：CoverStore（2026-09-25）
+
+用户观察到两个现象，根因不同：
+1. **同一封面每次进页面都重新加载**——旧 GameCover 把图存在视图 `@State`，页面切换即销毁，无应用级缓存。
+2. **DragonSword : Awakening 永远灰块**——两因叠加：负缓存（`missingHeaders` Set）进程级永不过期（早期非懒加载时代 312 并发把 appdetails 打到限流，一次失败终身拉黑）；且 Steam appdetails 有**响应重键怪癖**：商店条目迁移到内部 appid 后（如 4570720 → 包装键 4742660，内层 steam_appid 仍是 4570720），按请求 appid 取键取不到数据。
+
+修复：新 `CoverStore`（actor，OverviewView.swift，与 GameCover 同文件）统一所有应用内图片瓦片：内存 → 磁盘（`Application Support/Hourcade/covers/<sha256 前 8 位>.jpg`）→ 网络；Steam 兜底的 appdetails 解析结果持久化到 `steam-headers.json`（键匹配改为**按内层 success+data 匹配**，不信任包装键），失败负缓存 1 小时过期。`GameCover` 与 `PlatformAvatarView` 全部走 CoverStore。`ArtworkCache`（常规设置缓存管理）的统计与清除已并入 covers 目录。行为：重进页面秒显、DragonSword 类游戏成功解析、缓存清除一并生效。
+
+### 平台页大改版（2026-09-25，grill-me 拷问式设计后实施）
+
+经三轮拷问确认共识后实施。删页头冗余：先删 eyebrow"平台连接"+副标题，后进一步**移除平台页内容区的大标题**（导航栏已有同名标题，重复；PageShell 加 `showsHeading` 参数，三个平台页关闭，常规设置保留原头部）。新增内容全部参考小黑盒 Switch 页截图：
+
+**头部行**：平台头像（新）+ 昵称 + 最近同步时间；右侧"立即同步"按钮 + "⋯"菜单（重新登录/更换账号或密钥）。
+- 头像来源：Steam=GetPlayerSummaries avatarfull（已有）；Nintendo=账号 profile 的 `iconUri`（Mii 图，与昵称同一请求，实测可用）；PSN=profile2 `avatarUrls`，**按 onlineId 二次请求才有**（对 "me" 不返回），默认头像走 http、已升级 https 过 ATS。拿不到回退平台 logo 色块。
+
+**统计行**（StatsRow）：Steam=等级/总时长/游戏数；Nintendo=总时长/游戏数；PSN=等级/总时长/游戏数/完成率。
+- Steam 等级：`IPlayerService/GetSteamLevel/v1`，参数是 **steamid 单数**（写成 steamids 会静默失败）。
+- PSN 等级：`trophy/v1/users/me/trophySummary`（me 可用），同时给四色奖杯计数。
+- PSN 完成率（用户定义 B 口径）：`trophy/v1/users/{accountId}/trophyTitles` 全列表求和 earned÷defined（**该端点不认 me，必须用数字 accountId**，accountId 从 trophySummary 响应取；列表响应的键是 `trophyTitles` 而非 `titles`）。实测 192/1229=15.6%。
+- PSN 四色奖杯行：TrophyCountRow，SF Symbols `trophy.fill` 染白金/金/银/铜四色。
+
+**游戏列表**（GameListPanel + 各平台行，LazyVStack，按各平台排序）：
+- 列表统一标题"我的游戏 · N"+ 各自列头。
+- Nintendo：封面 | 名字/总时长堆叠 | 两周内 | 上次游玩。两周内从 `play_histories` 的 `recentPlayHistories[].dailyPlayHistories` 按日求和（14 天窗口，prefix(10) 字符串比较日期），列 `NintendoGame.fortnightMinutes`。排序：两周内 desc → 上次游玩 desc → 总时长 desc。
+- Steam：横幅封面（header.jpg，Q12 用户选原生横幅；仍走 appdetails 哈希兜底）| 名字/总时长 | 两周内 | 上次游玩 | 成就（"2/53"）。成就懒加载：`ISteamUserStats/GetPlayerAchievements` 每游戏一请求，`SteamAchievementStore` actor + 磁盘缓存 24h（achievements.json）；steamID 从 GetPlayerSummaries 存进 `SteamPlayer.steamID`。
+- PSN：方形封面（原生 1024×1024）| 名字 | **奖杯数（四色迷你图标+数量：白金/金/银/铜，TrophyPalette 与账号行同色）** | 奖杯进度% | 游戏时长。排序：上次游玩 desc → 总时长 desc。逐游戏奖杯：`trophy/v1/users/me/titles/trophyTitles?npTitleIds={titleId}`（gamelist 的 titleId 与奖杯 npCommunicationId 无直接键，PSNAWP 同款按 titleId 查询方案），`PSNTrophyStore` actor + 24h 磁盘缓存（psn-trophies.json），Entry 含四色计数（缓存格式变更会整体失效重取一次），查无奖杯缓存 0。四色小图标横向排布，列宽 136pt。**对齐规则（用户要求）：三个列表的列头与数值全部左对齐**（GameListPanel 列头 frame 改 leading，各行列值同步改）；四色奖杯用固定槽位防串行——按各层级合理位数预留宽度（白金 1 位 7pt、金/银 2 位 13pt、铜 3 位 19pt，超出 minimumScaleFactor 缩放），保证每行同类型奖杯垂直对齐。
+- 紧凑时长格式：≥1h 取整"41 小时"，<1h 一位小数"0.6 小时"，<3 分钟"0"；统计行 totalHours 一位小数千分组。
+
+调参记录：PSN 头像/完成率调试用了临时 debug-psn.log 诊断（已拆除），教训：us-prof 旧端点对 me 和对 onlineId 的返回字段集不同；trophy 端点族对 me/数字 id 的接受度不一致，盲猜不如记状态码。
+
+### 拼图背景（2026-09-25，灵感：社区"游戏拼图"）——**已按用户决定从界面撤下，代码保留**
+
+用户提出总览背景不要被单一平台垄断，采用小黑盒式"游戏拼图"思路：所有平台 Top 游戏封面按时长加权拼成方块画布，模糊压暗后铺底。实现于 `Hourcade/App/MosaicBackdrop.swift`（在 app target 编译，**未接线**）：
+
+- `MosaicSource`：总览 = 三平台各 Top8（24 块）；平台页 = 该平台 Top12。权重 = `pow(分钟, 0.55)`，份额钳制在 2%–20% 再归一，防止单块垄断/消失。
+- `MosaicCanvas`：行式 treemap（贪心并行使最差长宽比最优）→ `NSBitmapImageRep` 离屏绘制（y 轴翻转让大块在顶部）→ `CIGaussianBlur` 半径 6、方块间 3px 缝（用户反馈 19 模糊到无法辨认；6 时封面可辨识、格子感清晰，浅色 scrim 兜住文字对比度）。纯函数跑在 `Task.detached`，CGImage 进出（Sendable 安全）。
+- `MosaicBackdropView`：`.background` 铺底 + 随 colorScheme 切换的 scrim（深色黑 0.52→0.74，浅色白 0.52→0.72 渐变）；内存缓存按"游戏 id 集合"签名，同步后集合变化自动重拼；失败/未连接回退纯渐变。
+- 封面下载走独立 `mosaic-` 缓存命名空间（`mosaic-steam-<id>` 等），不污染小组件管线；Steam 用 library_600x900、Nintendo 用 payload imageUrl、PSN 用 gamelist imageURL，首次下载后落盘复用。
+- 接线：`PageShell` 加可选 `backdrop:` 参数（三平台连接页传各自拼图，常规设置无背景）；总览在 `.navigationTitle` 前挂 `.background(MosaicBackdropView(...))`。
+- 验收：两轮窗口截图（模糊 19 → 用户反馈"什么都看不清" → 模糊 6 方块可辨，但整体效果仍不满意）。
+- **最终决定（用户）**：撤下页面背景；思路保留，未来桌面小组件可能用到。`MosaicSource`（选图）与 `MosaicCanvas`（行式 treemap + 离屏渲染 + CI 模糊）是可复用入口，做组件拼图时需把文件迁到 Shared/组件 target。
 
 ### 侧边栏图标与对齐（2026-09-25）
 

@@ -47,9 +47,29 @@ struct PSNGame: Identifiable, Codable, Sendable {
     }
 }
 
+/// Account-level trophy counts. The per-game breakdown is fetched lazily by
+/// the platform page (one request per title) and never persisted here.
+struct PSNTrophyCounts: Codable, Sendable {
+    var bronze: Int = 0
+    var silver: Int = 0
+    var gold: Int = 0
+    var platinum: Int = 0
+}
+
+struct PSNTrophies: Codable, Sendable {
+    var level: Int? = nil
+    var earned: PSNTrophyCounts = PSNTrophyCounts()
+    // Summed across every trophy title the account owns; the completion rate
+    // is earned ÷ defined.
+    var earnedTotal: Int? = nil
+    var definedTotal: Int? = nil
+}
+
 struct PSNLibrary: Codable, Sendable {
     let games: [PSNGame]
     var onlineID: String? = nil
+    var avatarURL: URL? = nil
+    var trophies: PSNTrophies? = nil
     var totalMinutes: Int { games.reduce(0) { $0 + $1.lifetimeMinutes } }
 }
 
@@ -67,6 +87,9 @@ struct NintendoGame: Codable, Identifiable, Sendable {
     // Unix timestamp of the play history's `lastPlayedAt`. Snapshots saved before
     // this field shipped have none and fall back to `firstPlayedAt` below.
     var lastPlayedAt: Int? = nil
+    // Two-week minutes, summed from the API's daily play records. Snapshots
+    // saved before this field shipped have none.
+    var fortnightMinutes: Int = 0
     // Nintendo's own title identifier, which the store page and the play history
     // never agree on. Older snapshots saved before the account login shipped have
     // no value and fall back to the fields below.
@@ -98,6 +121,7 @@ struct NintendoSnapshot: Codable, Sendable {
     // The Nintendo Account nickname the history belongs to. Snapshots saved by the
     // nxapi round-trip have none, and the account login fills it best effort.
     var accountName: String? = nil
+    var avatarURL: URL? = nil
     var totalMinutes: Int { games.reduce(0) { $0 + $1.totalPlayTime } }
 }
 

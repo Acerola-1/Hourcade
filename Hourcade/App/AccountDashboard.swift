@@ -77,6 +77,30 @@ enum DisplayFormat {
         formatter.setLocalizedDateFormatFromTemplate("MMMdjm")
         return formatter.string(from: date)
     }
+
+    /// List-style hours: whole hours above one hour, one decimal below.
+    static func compactHours(_ minutes: Int) -> String {
+        guard minutes >= 3 else { return "0" }
+        let hours = Double(minutes) / 60
+        if hours >= 1 {
+            return L10n.format("%lld 小时", Int(hours.rounded()))
+        }
+        return L10n.format("%.1f 小时", hours)
+    }
+
+    /// Stat-card hours with a decimal and locale grouping: 1,300.6 小时.
+    static func totalHours(_ minutes: Int) -> String {
+        let hours = Double(minutes) / 60
+        return hours.formatted(.number.locale(L10n.locale).precision(.fractionLength(1))) + " " + L10n.tr("小时")
+    }
+
+    static func relative(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = L10n.locale
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
 }
 
 // Keep messages as data so switching languages also updates existing sync results.
@@ -329,7 +353,8 @@ struct ContentView: View {
             let newSnapshot = NintendoSnapshot(
                 games: result.games,
                 syncedAt: .now,
-                accountName: result.accountName ?? nintendoSnapshot?.accountName
+                accountName: result.accountName ?? nintendoSnapshot?.accountName,
+                avatarURL: result.avatarURL ?? nintendoSnapshot?.avatarURL
             )
             try LocalSnapshotStore.save(newSnapshot, as: "nintendo")
             nintendoSnapshot = newSnapshot
@@ -401,21 +426,26 @@ private extension DashboardPage {
 }
 
 private struct PageShell<Content: View>: View {
-    let eyebrow: String
     let title: String
-    let subtitle: String
+    var showsHeading = true
+    var eyebrow: String? = nil
+    var subtitle: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(eyebrow.uppercased())
-                        .font(.caption.weight(.semibold))
-                        .tracking(1.4)
-                        .foregroundStyle(.secondary)
+                if showsHeading {
+                    if let eyebrow {
+                        Text(eyebrow.uppercased())
+                            .font(.caption.weight(.semibold))
+                            .tracking(1.4)
+                            .foregroundStyle(.secondary)
+                    }
                     Text(title).font(.largeTitle.bold())
-                    Text(subtitle).foregroundStyle(.secondary)
+                    if let subtitle {
+                        Text(subtitle).foregroundStyle(.secondary)
+                    }
                 }
                 content
             }
@@ -441,6 +471,349 @@ private struct SettingsPanel<Content: View>: View {
     }
 }
 
+/// The account's own avatar with the platform mark as the fallback; the mark
+/// stays visible while the avatar loads.
+private struct PlatformAvatarView: View {
+    let url: URL?
+    let platform: GamePlatform
+    var size: CGFloat = 52
+    @State private var image: CGImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 2)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.28))
+            } else {
+                AccountPlatformMark(platform: platform, size: size)
+            }
+        }
+        .task(id: url) {
+            guard let url else { return }
+            image = await CoverStore.shared.image(primary: url, fallback: nil, appID: nil)
+        }
+    }
+}
+
+private struct StatsRow: View {
+    struct Stat {
+        let value: String
+        let label: String
+    }
+
+    let stats: [Stat]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(stats.indices, id: \.self) { index in
+                if index > 0 {
+                    Divider().frame(height: 38).padding(.horizontal, 18)
+                }
+                VStack(spacing: 4) {
+                    Text(stats[index].value)
+                        .font(.title3.bold().monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(stats[index].label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.vertical, 18)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+private enum TrophyPalette {
+    static let platinum = Color(red: 0.72, green: 0.78, blue: 0.86)
+    static let gold = Color(red: 0.98, green: 0.79, blue: 0.25)
+    static let silver = Color(red: 0.71, green: 0.75, blue: 0.82)
+    static let bronze = Color(red: 0.80, green: 0.51, blue: 0.28)
+}
+
+private struct TrophyCountRow: View {
+    let counts: PSNTrophyCounts
+
+    var body: some View {
+        HStack(spacing: 22) {
+            trophy(L10n.tr("白金"), count: counts.platinum, color: TrophyPalette.platinum)
+            trophy(L10n.tr("黄金"), count: counts.gold, color: TrophyPalette.gold)
+            trophy(L10n.tr("白银"), count: counts.silver, color: TrophyPalette.silver)
+            trophy(L10n.tr("黄铜"), count: counts.bronze, color: TrophyPalette.bronze)
+            Spacer()
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 22)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func trophy(_ label: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "trophy.fill")
+                .font(.subheadline)
+                .foregroundStyle(color)
+            Text("\(count)")
+                .font(.subheadline.bold().monospacedDigit())
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Shared chrome for the platform game lists: a "My games · N" title, the
+/// platform's own column headers, and the lazy rows below.
+private struct GameListPanel<Rows: View>: View {
+    let count: Int
+    let columns: [String]
+    let columnWidths: [CGFloat]
+    @ViewBuilder let rows: Rows
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.format("我的游戏 · %lld", count))
+                .font(.title3.bold())
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Text(L10n.tr("游戏"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    ForEach(columns.indices, id: \.self) { index in
+                        Text(columns[index])
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: columnWidths[index], alignment: .leading)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                Divider()
+                LazyVStack(spacing: 0) {
+                    rows
+                }
+            }
+            .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+}
+
+private struct SteamGameList: View {
+    let games: [SteamGame]
+    let steamID: String?
+    let key: String
+
+    var body: some View {
+        let sorted = games.sorted { lhs, rhs in
+            if lhs.fortnightMinutes != rhs.fortnightMinutes { return lhs.fortnightMinutes > rhs.fortnightMinutes }
+            switch (lhs.lastPlayedDate, rhs.lastPlayedDate) {
+            case let (l?, r?): if l != r { return l > r }
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: break
+            }
+            return lhs.lifetimeMinutes > rhs.lifetimeMinutes
+        }
+        GameListPanel(count: games.count, columns: [L10n.tr("两周内"), L10n.tr("上次游玩"), L10n.tr("成就")], columnWidths: [64, 78, 62]) {
+            ForEach(sorted) { game in
+                SteamGameRow(game: game, steamID: steamID, key: key)
+                Divider().padding(.leading, 16)
+            }
+        }
+    }
+}
+
+private struct SteamGameRow: View {
+    let game: SteamGame
+    let steamID: String?
+    let key: String
+    @State private var achievements: SteamAchievementStore.Entry?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GameCover(
+                primary: URL(string: "https://cdn.cloudflare.steamstatic.com/steam/apps/\(game.id)/header.jpg"),
+                fallback: nil,
+                storeAppID: game.id,
+                size: CGSize(width: 84, height: 39)
+            )
+            VStack(alignment: .leading, spacing: 3) {
+                Text(game.name)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Text(DisplayFormat.compactHours(game.lifetimeMinutes))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(DisplayFormat.compactHours(game.fortnightMinutes))
+                .font(.callout.monospacedDigit())
+                .frame(width: 64, alignment: .leading)
+            Text(DisplayFormat.relative(game.lastPlayedDate))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .leading)
+            Group {
+                if let achievements {
+                    Text("\(achievements.earned)/\(achievements.total)")
+                        .monospacedDigit()
+                } else {
+                    Text("—").foregroundStyle(.tertiary)
+                }
+            }
+            .font(.callout)
+            .frame(width: 62, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .task(id: game.id) {
+            guard achievements == nil, !key.isEmpty, let steamID, !steamID.isEmpty else { return }
+            achievements = await SteamAchievementStore.shared.summary(appID: game.id, steamID: steamID, key: key)
+        }
+    }
+}
+
+private struct NintendoGameList: View {
+    let games: [NintendoGame]
+
+    var body: some View {
+        let sorted = games.sorted { lhs, rhs in
+            if lhs.fortnightMinutes != rhs.fortnightMinutes { return lhs.fortnightMinutes > rhs.fortnightMinutes }
+            switch (lhs.lastPlayedDate, rhs.lastPlayedDate) {
+            case let (l?, r?): if l != r { return l > r }
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: break
+            }
+            return lhs.totalPlayTime > rhs.totalPlayTime
+        }
+        GameListPanel(count: games.count, columns: [L10n.tr("两周内"), L10n.tr("上次游玩")], columnWidths: [64, 78]) {
+            ForEach(sorted) { game in
+                NintendoGameRow(game: game)
+                Divider().padding(.leading, 16)
+            }
+        }
+    }
+}
+
+private struct NintendoGameRow: View {
+    let game: NintendoGame
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GameCover(primary: URL(string: game.imageUri), fallback: nil, storeAppID: nil)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(game.name)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Text(DisplayFormat.compactHours(game.totalPlayTime))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(DisplayFormat.compactHours(game.fortnightMinutes))
+                .font(.callout.monospacedDigit())
+                .frame(width: 64, alignment: .leading)
+            Text(DisplayFormat.relative(game.lastPlayedDate))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+    }
+}
+
+private struct PSNGameList: View {
+    let games: [PSNGame]
+
+    var body: some View {
+        let sorted = games.sorted { lhs, rhs in
+            switch (lhs.lastPlayedDate, rhs.lastPlayedDate) {
+            case let (l?, r?): if l != r { return l > r }
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: break
+            }
+            return lhs.lifetimeMinutes > rhs.lifetimeMinutes
+        }
+        GameListPanel(count: games.count, columns: [L10n.tr("奖杯数"), L10n.tr("奖杯进度"), L10n.tr("游戏时长")], columnWidths: [136, 46, 64]) {
+            ForEach(sorted) { game in
+                PSNGameRow(game: game)
+                Divider().padding(.leading, 16)
+            }
+        }
+    }
+}
+
+private struct PSNGameRow: View {
+    let game: PSNGame
+    @State private var trophies: PSNTrophyStore.Entry?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            GameCover(primary: game.imageURL, fallback: nil, storeAppID: nil)
+            Text(game.name)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Group {
+                if let trophies {
+                    HStack(spacing: 8) {
+                        miniTrophy(TrophyPalette.platinum, count: trophies.platinum, digits: 7)
+                        miniTrophy(TrophyPalette.gold, count: trophies.gold, digits: 13)
+                        miniTrophy(TrophyPalette.silver, count: trophies.silver, digits: 13)
+                        miniTrophy(TrophyPalette.bronze, count: trophies.bronze, digits: 19)
+                    }
+                } else {
+                    Text("—").foregroundStyle(.tertiary)
+                }
+            }
+            .frame(width: 136, alignment: .leading)
+            Group {
+                if let trophies {
+                    Text("\(trophies.progress)%").monospacedDigit()
+                } else {
+                    Text("—").foregroundStyle(.tertiary)
+                }
+            }
+            .font(.callout)
+            .frame(width: 46, alignment: .leading)
+            Text(DisplayFormat.compactHours(game.lifetimeMinutes))
+                .font(.callout.monospacedDigit())
+                .frame(width: 64, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 9)
+        .task(id: game.id) {
+            guard trophies == nil else { return }
+            trophies = await PSNTrophyStore.shared.summary(titleId: game.id)
+        }
+    }
+
+    /// One trophy tier inside the list row. Every tier gets a fixed-width slot
+    /// sized for its plausible digit count (platinum 1, gold/silver 2, bronze 3),
+    /// so the same tier lines up vertically across all rows.
+    private func miniTrophy(_ color: Color, count: Int, digits: CGFloat) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "trophy.fill")
+                .font(.system(size: 8))
+            Text("\(count)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.primary)
+                .frame(width: digits, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
+        .foregroundStyle(color)
+    }
+}
+
 private struct SteamSettingsView: View {
     @Environment(\.locale) private var locale
     @State private var account = UserDefaults.standard.string(forKey: "steam.account") ?? ""
@@ -458,41 +831,49 @@ private struct SteamSettingsView: View {
 
     var body: some View {
         let _ = locale
-        PageShell(eyebrow: L10n.tr("平台连接"), title: "Steam", subtitle: L10n.tr("连接你的 Steam 账号，游玩数据会显示在总览。")) {
-            if hasConnection && !isEditing {
-                SettingsPanel(title: L10n.tr("已连接的账号")) {
-                    HStack(spacing: 14) {
-                        AccountPlatformMark(platform: .steam, size: 44)
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(account).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            Label(L10n.tr("API Key 已保存在本机钥匙串"), systemImage: "checkmark.shield")
-                                .font(.caption).foregroundStyle(.secondary)
+        PageShell(title: "Steam", showsHeading: false) {
+            if let snapshot, hasConnection, !isEditing {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 13) {
+                        PlatformAvatarView(url: snapshot.library.player?.avatarURL, platform: .steam)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(snapshot.library.player?.name ?? account)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(L10n.format("最近同步 %@", DisplayFormat.syncDate(snapshot.syncedAt)))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Button {
+                                Task { _ = await onSync(account, "") }
+                            } label: {
+                                Label(L10n.tr("立即同步"), systemImage: "arrow.clockwise")
+                            }
+                            .disabled(isRefreshing)
+                            Menu {
+                                Button(L10n.tr("更换账号或密钥")) { isEditing = true }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                            if isRefreshing { ProgressView().controlSize(.small) }
                         }
                     }
-                    Divider()
-                    HStack {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .foregroundStyle(.secondary)
-                        Text(L10n.tr("最近同步"))
-                        Spacer()
-                        Text(snapshot.map { DisplayFormat.syncDate($0.syncedAt) } ?? L10n.tr("尚未同步"))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.subheadline)
                     if let syncError {
                         Label(syncError, systemImage: "exclamationmark.triangle")
-                            .font(.caption).foregroundStyle(.orange)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
                     }
-                    HStack {
-                        Button(L10n.tr("立即同步")) { Task { _ = await onSync(account, "") } }
-                            .disabled(isRefreshing)
-                        if isRefreshing { ProgressView().controlSize(.small) }
-                        Spacer()
-                        Button(L10n.tr("更换账号或密钥")) { isEditing = true }
-                    }
+                    StatsRow(stats: [
+                        .init(value: snapshot.library.player?.level.map { L10n.format("Lv.%lld", $0) } ?? "—", label: L10n.tr("等级")),
+                        .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
+                        .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
+                    ])
+                    SteamGameList(games: snapshot.library.games, steamID: snapshot.library.player?.steamID, key: KeychainSecret.read("steam.apiKey") ?? "")
+                    DisclosureGroup(L10n.tr("查看连接说明")) { connectionGuide }
+                        .padding(.horizontal, 4)
                 }
-                DisclosureGroup(L10n.tr("查看连接说明")) { connectionGuide }
-                    .padding(.horizontal, 4)
             } else {
                 connectionGuide
                 SettingsPanel(title: L10n.tr("连接你的账号")) {
@@ -582,42 +963,67 @@ private struct NintendoSettingsView: View {
 
     var body: some View {
         let _ = locale
-        PageShell(eyebrow: L10n.tr("平台连接"), title: "Nintendo Switch", subtitle: L10n.tr("使用你的 Nintendo 账号连接游玩记录。")) {
-            SettingsPanel(title: snapshot == nil ? L10n.tr("连接账号") : L10n.tr("已连接的账号")) {
-                HStack(spacing: 13) {
-                    AccountPlatformMark(platform: .nintendo, size: 44)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(accountName)
-                            .font(.subheadline.weight(.semibold))
-                        Text(hasSavedSession ? L10n.tr("登录凭据已保存在本机钥匙串") : L10n.tr("需要登录 Nintendo 账号"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if let snapshot, hasSavedSession {
-                    HStack {
-                        Text(L10n.tr("最近同步"))
+        PageShell(title: "Nintendo Switch", showsHeading: false) {
+            if let snapshot, hasSavedSession {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 13) {
+                        PlatformAvatarView(url: snapshot.avatarURL, platform: .nintendo)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(accountName)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(L10n.format("最近同步 %@", DisplayFormat.syncDate(snapshot.syncedAt)))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Text(DisplayFormat.syncDate(snapshot.syncedAt))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.subheadline)
-                }
-                Divider()
-                HStack(spacing: 10) {
-                    Button(isLoading ? L10n.tr("连接中…") : hasSavedSession ? L10n.tr("立即同步") : L10n.tr("使用 Nintendo 账号登录")) {
-                        Task { await connect(useBrowser: !hasSavedSession) }
-                    }
-                    .disabled(isLoading)
-                    if hasSavedSession {
-                        Button(L10n.tr("重新登录")) { Task { await connect(useBrowser: true) } }
+                        HStack(spacing: 8) {
+                            Button {
+                                Task { await connect(useBrowser: false) }
+                            } label: {
+                                Label(L10n.tr("立即同步"), systemImage: "arrow.clockwise")
+                            }
                             .disabled(isLoading)
+                            Menu {
+                                Button(L10n.tr("重新登录")) { Task { await connect(useBrowser: true) } }
+                                    .disabled(isLoading)
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                            if isLoading { ProgressView().controlSize(.small) }
+                        }
                     }
-                    if isLoading { ProgressView().controlSize(.small) }
+                    if let status {
+                        Text(status.text).font(.caption).foregroundStyle(.secondary)
+                    }
+                    StatsRow(stats: [
+                        .init(value: DisplayFormat.totalHours(snapshot.totalMinutes), label: L10n.tr("总时长")),
+                        .init(value: "\(snapshot.games.count)", label: L10n.tr("游戏数量")),
+                    ])
+                    NintendoGameList(games: snapshot.games)
                 }
-                if let status {
-                    Text(status.text).font(.caption).foregroundStyle(.secondary)
-                }
-                if !hasSavedSession {
+            } else {
+                SettingsPanel(title: L10n.tr("连接账号")) {
+                    HStack(spacing: 13) {
+                        AccountPlatformMark(platform: .nintendo, size: 44)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(accountName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(L10n.tr("需要登录 Nintendo 账号"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider()
+                    HStack(spacing: 10) {
+                        Button(isLoading ? L10n.tr("连接中…") : L10n.tr("使用 Nintendo 账号登录")) {
+                            Task { await connect(useBrowser: true) }
+                        }
+                        .disabled(isLoading)
+                        if isLoading { ProgressView().controlSize(.small) }
+                    }
+                    if let status {
+                        Text(status.text).font(.caption).foregroundStyle(.secondary)
+                    }
                     Text(L10n.tr("登录窗口由系统打开，Hourcade 不接收你的密码。此连接仍在测试，服务变更可能导致失败。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -640,7 +1046,8 @@ private struct NintendoSettingsView: View {
             try await onSynced(NintendoSnapshot(
                 games: result.games,
                 syncedAt: .now,
-                accountName: result.accountName
+                accountName: result.accountName,
+                avatarURL: result.avatarURL
             ))
             status = .synced(.now)
         } catch {
@@ -664,47 +1071,84 @@ private struct PSNSettingsView: View {
 
     var body: some View {
         let _ = locale
-        PageShell(eyebrow: L10n.tr("平台连接"), title: "PlayStation", subtitle: L10n.tr("使用你的 PlayStation 账号连接游玩记录。")) {
-            SettingsPanel(title: snapshot == nil ? L10n.tr("连接账号") : L10n.tr("已连接的账号")) {
-                HStack(spacing: 13) {
-                    AccountPlatformMark(platform: .playStation, size: 44)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(accountName)
-                            .font(.subheadline.weight(.semibold))
-                        Text(hasSavedSession ? L10n.tr("登录凭据已保存在本机钥匙串") : L10n.tr("需要登录 PlayStation 账号"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if let snapshot, hasSavedSession {
-                    HStack {
-                        Text(L10n.tr("最近同步"))
+        PageShell(title: "PlayStation", showsHeading: false) {
+            if let snapshot, hasSavedSession {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 13) {
+                        PlatformAvatarView(url: snapshot.library.avatarURL, platform: .playStation)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(accountName)
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(L10n.format("最近同步 %@", DisplayFormat.syncDate(snapshot.syncedAt)))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Text(DisplayFormat.syncDate(snapshot.syncedAt))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.subheadline)
-                }
-                Divider()
-                HStack(spacing: 10) {
-                    Button(isLoading ? L10n.tr("连接中…") : hasSavedSession ? L10n.tr("立即同步") : L10n.tr("使用 PlayStation 账号登录")) {
-                        Task { await connect(useBrowser: !hasSavedSession) }
-                    }
-                    .disabled(isLoading)
-                    if hasSavedSession {
-                        Button(L10n.tr("重新登录")) { Task { await connect(useBrowser: true) } }
+                        HStack(spacing: 8) {
+                            Button {
+                                Task { await connect(useBrowser: false) }
+                            } label: {
+                                Label(L10n.tr("立即同步"), systemImage: "arrow.clockwise")
+                            }
                             .disabled(isLoading)
+                            Menu {
+                                Button(L10n.tr("重新登录")) { Task { await connect(useBrowser: true) } }
+                                    .disabled(isLoading)
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                            }
+                            if isLoading { ProgressView().controlSize(.small) }
+                        }
                     }
-                    if isLoading { ProgressView().controlSize(.small) }
+                    if let status {
+                        Text(status.text).font(.caption).foregroundStyle(.secondary)
+                    }
+                    StatsRow(stats: [
+                        .init(value: snapshot.library.trophies?.level.map { L10n.format("Lv.%lld", $0) } ?? "—", label: L10n.tr("等级")),
+                        .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
+                        .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
+                        .init(value: completionRate, label: L10n.tr("完成率")),
+                    ])
+                    if let counts = snapshot.library.trophies?.earned {
+                        TrophyCountRow(counts: counts)
+                    }
+                    PSNGameList(games: snapshot.library.games)
                 }
-                if let status {
-                    Text(status.text).font(.caption).foregroundStyle(.secondary)
-                }
-                if !hasSavedSession {
+            } else {
+                SettingsPanel(title: L10n.tr("连接账号")) {
+                    HStack(spacing: 13) {
+                        AccountPlatformMark(platform: .playStation, size: 44)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(accountName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(L10n.tr("需要登录 PlayStation 账号"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider()
+                    HStack(spacing: 10) {
+                        Button(isLoading ? L10n.tr("连接中…") : L10n.tr("使用 PlayStation 账号登录")) {
+                            Task { await connect(useBrowser: true) }
+                        }
+                        .disabled(isLoading)
+                        if isLoading { ProgressView().controlSize(.small) }
+                    }
+                    if let status {
+                        Text(status.text).font(.caption).foregroundStyle(.secondary)
+                    }
                     Text(L10n.tr("登录窗口由系统打开，Hourcade 不接收你的密码。此连接仍在测试，服务变更可能导致失败。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    private var completionRate: String {
+        guard let trophies = snapshot?.library.trophies,
+              let earned = trophies.earnedTotal, let defined = trophies.definedTotal, defined > 0
+        else { return "—" }
+        return L10n.format("%.1f%%", Double(earned) / Double(defined) * 100)
     }
 
     @MainActor
@@ -795,7 +1239,11 @@ enum KeychainSecret {
 /// file in the directory is re-downloadable, so deleting it is always safe.
 enum ArtworkCache {
     static func usage() async -> (bytes: Int64, files: Int) {
-        await measure(directory: SteamWidgetStore.artworkDirectory)
+        // App Group artwork (widget pipeline) plus the in-app cover disk cache.
+        async let widget = measure(directory: SteamWidgetStore.artworkDirectory)
+        async let covers = measure(directory: CoverStore.coversDirectory)
+        let (widgetUsage, coverUsage) = await (widget, covers)
+        return (widgetUsage.bytes + coverUsage.bytes, widgetUsage.files + coverUsage.files)
     }
 
     static func clear() async {
@@ -807,6 +1255,7 @@ enum ArtworkCache {
                 try? fm.removeItem(at: directory.appending(path: name))
             }
         }.value
+        await CoverStore.shared.clear()
     }
 
     private static func measure(directory: URL?) async -> (bytes: Int64, files: Int) {
@@ -840,7 +1289,7 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         let _ = locale
-        PageShell(eyebrow: L10n.tr("偏好设置"), title: L10n.tr("常规设置"), subtitle: L10n.tr("这些选项同时应用于 Hourcade 和桌面小组件。")) {
+        PageShell(title: L10n.tr("常规设置"), eyebrow: L10n.tr("偏好设置"), subtitle: L10n.tr("这些选项同时应用于 Hourcade 和桌面小组件。")) {
             SettingsPanel(title: L10n.tr("语言")) {
                 Picker(L10n.tr("语言"), selection: $language) {
                     Text(L10n.tr("跟随系统")).tag(AppLanguage.system)

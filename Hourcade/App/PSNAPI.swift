@@ -128,9 +128,10 @@ enum PSNAPI {
         }
         try Task.checkCancellation()
 
-        // Always the signed-in account. The Online ID is only a display label, so a
-        // failed lookup must not fail the sync.
-        let onlineID = await selfOnlineID(accessToken: tokens.access_token, session: session)
+        // Always the signed-in account. The Online ID and avatar are display
+        // labels, so a failed lookup must not fail the sync.
+        let profile = await selfProfile(accessToken: tokens.access_token, session: session)
+        let trophies = await selfTrophies(accessToken: tokens.access_token, session: session, accountID: profile.accountID)
         let accountID = "me"
 
         let limit = 100
@@ -183,7 +184,9 @@ enum PSNAPI {
             if endOffset == page.totalItemCount {
                 guard games.count == page.totalItemCount else { throw PSNError.incompleteLibrary }
                 var library = PSNLibrary(games: games)
-                library.onlineID = onlineID
+                library.onlineID = profile.onlineID
+                library.avatarURL = profile.avatar
+                library.trophies = trophies
                 return (library, tokens.refresh_token)
             }
             guard !page.titles.isEmpty else { throw PSNError.incompleteLibrary }
@@ -192,19 +195,100 @@ enum PSNAPI {
         throw PSNError.incompleteLibrary
     }
 
-    // Display-only label for the signed-in account. Any failure (privacy, network,
-    // unexpected shape) resolves to nil and leaves the library sync unaffected.
-    private static func selfOnlineID(accessToken: String, session: URLSession) async -> String? {
+    // Display-only labels for the signed-in account. Any failure (privacy,
+    // network, unexpected shape) resolves to nil and leaves the sync unaffected.
+    private static func selfProfile(accessToken: String, session: URLSession) async -> (onlineID: String?, avatar: URL?, accountID: String?) {
         var components = URLComponents(string: "https://us-prof.np.community.playstation.net/userProfile/v1/users/me/profile2")!
-        components.queryItems = [URLQueryItem(name: "fields", value: "onlineId")]
+        components.queryItems = [URLQueryItem(name: "fields", value: "onlineId,accountId,avatarUrls")]
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, http) = try? await Self.data(for: request, session: session),
               (200..<300).contains(http.statusCode),
               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let profile = root["profile"] as? [String: Any]
-        else { return nil }
-        return nonempty(profile["onlineId"] as? String)
+              let profile = root["profile"] as? [String: Any] else { return (nil, nil, nil) }
+        let onlineID = nonempty(profile["onlineId"] as? String)
+        let accountID = nonempty(profile["accountId"] as? String)
+        var avatar = bestAvatar(from: profile["avatarUrls"] as? [[String: Any]], urlKey: "avatarUrl")
+        if avatar == nil, let onlineID {
+            // The legacy host only attaches avatars when addressed by online id.
+            var byName = URLRequest(url: URL(string: "https://us-prof.np.community.playstation.net/userProfile/v1/users/\(onlineID)/profile2?fields=avatarUrls")!)
+            byName.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            if let (data, http) = try? await Self.data(for: byName, session: session),
+               (200..<300).contains(http.statusCode),
+               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+               let profile2 = root["profile"] as? [String: Any] {
+                avatar = bestAvatar(from: profile2["avatarUrls"] as? [[String: Any]], urlKey: "avatarUrl")
+            }
+        }
+        if avatar == nil {
+            // The modern endpoint needs a different token class and rejects ours;
+            // kept only as the last resort, tolerated to fail.
+            var modern = URLRequest(url: URL(string: "https://m.np.playstation.com/api/userProfile/v1/internal/users/me/profile2")!)
+            modern.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            if let (data, http) = try? await Self.data(for: modern, session: session),
+               (200..<300).contains(http.statusCode),
+               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                avatar = bestAvatar(from: root["avatarUrls"] as? [[String: Any]], urlKey: "avatarUrl")
+                    ?? bestAvatar(from: root["profilePictureUrls"] as? [[String: Any]], urlKey: "profilePictureUrl")
+            }
+        }
+        return (onlineID, avatar, accountID)
+    }
+
+    private static func bestAvatar(from entries: [[String: Any]]?, urlKey: String) -> URL? {
+        guard let entries else { return nil }
+        // The default avatar is served over plain http, which ATS would block;
+        // the host supports https, so upgrade the scheme before validating.
+        let urls = entries.compactMap { ($0[urlKey] as? String)?.replacingOccurrences(of: "http://", with: "https://") }
+        // The renditions' ordering is unspecified; prefer the extra-large one.
+        return (urls.first { $0.lowercased().contains("xl") } ?? urls.last).flatMap(imageURL)
+    }
+
+    // Account-level trophy numbers are presentation only; any failure resolves
+    // to nil and leaves the library sync unaffected.
+    private static func selfTrophies(accessToken: String, session: URLSession, accountID: String?) async -> PSNTrophies? {
+        var result = PSNTrophies()
+        var summaryAccountId: String?
+
+        var summaryRequest = URLRequest(url: URL(string: "https://m.np.playstation.com/api/trophy/v1/users/me/trophySummary")!)
+        summaryRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        if let summary: TrophySummaryDTO = try? await decode(summaryRequest, session: session) {
+            summaryAccountId = nonempty(summary.accountId)
+            result.level = summary.trophyLevel?.value
+            result.earned.bronze = summary.earnedTrophies?.bronze ?? 0
+            result.earned.silver = summary.earnedTrophies?.silver ?? 0
+            result.earned.gold = summary.earnedTrophies?.gold ?? 0
+            result.earned.platinum = summary.earnedTrophies?.platinum ?? 0
+        }
+
+        // The completion rate is the sum over every trophy title the account
+        // owns: earned ÷ defined. This endpoint needs the numeric account id;
+        // "me" is only accepted by the summary above.
+        let id = nonempty(accountID) ?? summaryAccountId ?? "me"
+        var earnedTotal = 0
+        var definedTotal = 0
+        var offset = 0
+        let limit = 800
+        for _ in 0..<50 {
+            var components = URLComponents(string: "https://m.np.playstation.com/api/trophy/v1/users/\(id)/trophyTitles")!
+            components.queryItems = [
+                URLQueryItem(name: "limit", value: String(limit)),
+                URLQueryItem(name: "offset", value: String(offset))
+            ]
+            var request = URLRequest(url: components.url!)
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            guard let page: TrophyTitlesResponse = try? await decode(request, session: session),
+                  let titles = page.trophyTitles, !titles.isEmpty else { break }
+            for title in titles {
+                earnedTotal += title.earnedTrophies?.total ?? 0
+                definedTotal += title.definedTrophies?.total ?? 0
+            }
+            guard titles.count == limit else { break }
+            offset += limit
+        }
+        result.earnedTotal = earnedTotal
+        result.definedTotal = definedTotal
+        return result
     }
 
     private static func makeSession() -> URLSession {
@@ -323,6 +407,178 @@ enum PSNAPI {
         let minutes = (seconds / 60).rounded()
         guard minutes.isFinite, minutes >= 0, minutes < Double(Int.max) else { return nil }
         return Int(minutes)
+    }
+}
+
+// MARK: - Lazy per-game trophy lookups
+
+extension PSNAPI {
+    /// A fresh access token for out-of-sync lookups (the lazy trophy rows).
+    static func accessToken(savedRefreshToken: String?) async -> String? {
+        guard let savedRefreshToken, !savedRefreshToken.isEmpty else { return nil }
+        let session = makeSession()
+        defer { session.invalidateAndCancel() }
+        guard let tokens = try? await token(parameters: [
+            "refresh_token": savedRefreshToken,
+            "grant_type": "refresh_token",
+            "token_format": "jwt",
+            "scope": "psn:mobile.v2.core psn:clientapp"
+        ], session: session) else { return nil }
+        return tokens.access_token
+    }
+
+    static func titleTrophies(
+        titleId: String,
+        accessToken: String,
+        session: URLSession
+    ) async -> (bronze: Int, silver: Int, gold: Int, platinum: Int, defined: Int, progress: Int)? {
+        var components = URLComponents(string: "https://m.np.playstation.com/api/trophy/v1/users/me/titles/trophyTitles")!
+        components.queryItems = [URLQueryItem(name: "npTitleIds", value: titleId)]
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        guard let page: TitleTrophiesResponse = try? await decode(request, session: session) else { return nil }
+        if let trophyTitle = page.titles?.first?.trophyTitles?.first, let defined = trophyTitle.definedTrophies {
+            let earned = trophyTitle.earnedTrophies
+            return (
+                bronze: earned?.bronze ?? 0,
+                silver: earned?.silver ?? 0,
+                gold: earned?.gold ?? 0,
+                platinum: earned?.platinum ?? 0,
+                defined: defined.total,
+                progress: trophyTitle.progress ?? 0
+            )
+        }
+        // The account owns the game but has no trophy data for it; cache the
+        // zero so the row never re-requests.
+        return (bronze: 0, silver: 0, gold: 0, platinum: 0, defined: 0, progress: 0)
+    }
+
+    private struct TrophyTitlesResponse: Decodable {
+        // The account-level list nests its items under `trophyTitles`, unlike
+        // the per-title lookup which uses `titles`.
+        let trophyTitles: [TrophyTitleDTO]?
+        let totalItemCount: Int?
+        let nextOffset: Int?
+    }
+
+    private struct TitleTrophiesResponse: Decodable {
+        let titles: [GameTitleEntry]?
+    }
+
+    private struct GameTitleEntry: Decodable {
+        let trophyTitles: [TrophyTitleDTO]?
+    }
+
+    private struct TrophyTitleDTO: Decodable {
+        let progress: Int?
+        let earnedTrophies: TrophyCountsDTO?
+        let definedTrophies: TrophyCountsDTO?
+    }
+
+    private struct TrophyCountsDTO: Decodable {
+        let bronze: Int?
+        let silver: Int?
+        let gold: Int?
+        let platinum: Int?
+
+        var total: Int { (bronze ?? 0) + (silver ?? 0) + (gold ?? 0) + (platinum ?? 0) }
+    }
+
+    private struct TrophySummaryDTO: Decodable {
+        let accountId: String?
+        let trophyLevel: FlexibleInt?
+        let earnedTrophies: TrophyCountsDTO?
+    }
+}
+
+/// PSN reports the trophy level as a number in the API docs but as a string in
+/// some deployments; accept both.
+private struct FlexibleInt: Decodable, Sendable {
+    let value: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let int = try? container.decode(Int.self) {
+            value = int
+        } else if let string = try? container.decode(String.self), let int = Int(string) {
+            value = int
+        } else {
+            throw DecodingError.valueNotFound(
+                Int.self,
+                .init(codingPath: decoder.codingPath, debugDescription: "Expected an integer")
+            )
+        }
+    }
+}
+
+/// Lazy per-game trophy lookups with a day-long disk cache; the platform page
+/// fetches one row at a time so syncing never depends on this.
+actor PSNTrophyStore {
+    static let shared = PSNTrophyStore()
+
+    struct Entry: Codable, Sendable {
+        let bronze: Int
+        let silver: Int
+        let gold: Int
+        let platinum: Int
+        let defined: Int
+        let progress: Int
+        let fetchedAt: Date
+
+        var total: Int { bronze + silver + gold + platinum }
+    }
+
+    private var cache: [String: Entry]?
+    private var token: (value: String, fetchedAt: Date)?
+
+    private static var file: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?.appending(path: "Hourcade/psn-trophies.json")
+    }
+
+    func summary(titleId: String) async -> Entry? {
+        await loadFromDisk()
+        if let entry = cache?[titleId], Date().timeIntervalSince(entry.fetchedAt) < 86_400 {
+            return entry
+        }
+        guard let accessToken = await currentToken() else { return nil }
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        guard let result = await PSNAPI.titleTrophies(titleId: titleId, accessToken: accessToken, session: session) else { return nil }
+        let entry = Entry(
+            bronze: result.bronze,
+            silver: result.silver,
+            gold: result.gold,
+            platinum: result.platinum,
+            defined: result.defined,
+            progress: result.progress,
+            fetchedAt: .now
+        )
+        cache?[titleId] = entry
+        persist()
+        return entry
+    }
+
+    private func currentToken() async -> String? {
+        if let token, Date().timeIntervalSince(token.fetchedAt) < 3_000 { return token.value }
+        guard let value = await PSNAPI.accessToken(savedRefreshToken: KeychainSecret.read("psn.refreshToken")) else { return nil }
+        token = (value, .now)
+        return value
+    }
+
+    private func loadFromDisk() {
+        guard cache == nil else { return }
+        guard let file = Self.file, let data = try? Data(contentsOf: file) else {
+            cache = [:]
+            return
+        }
+        cache = (try? JSONDecoder().decode([String: Entry].self, from: data)) ?? [:]
+    }
+
+    private func persist() {
+        guard let file = Self.file, let cache, let data = try? JSONEncoder().encode(cache) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: file, options: .atomic)
     }
 }
 

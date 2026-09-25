@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1254 1254">
+  <defs>
+    <linearGradient id="pad" x1="289" y1="651" x2="465" y2="824" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2154b9"/><stop offset="1" stop-color="#34418e"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="850" y1="610" x2="929" y2="698" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#328ef5"/><stop offset="1" stop-color="#4474de"/>
+    </linearGradient>
+    <linearGradient id="green" x1="782" y1="696" x2="840" y2="773" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#69cfa8"/><stop offset="1" stop-color="#42b497"/>
+    </linearGradient>
+    <linearGradient id="red" x1="930" y1="694" x2="1004" y2="779" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff695d"/><stop offset="1" stop-color="#fa5358"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="848" y1="777" x2="936" y2="857" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffc94f"/><stop offset="1" stop-color="#ffae3e"/>
+    </linearGradient>
+  </defs>
+  <path d="M366 629h27c13 0 23 11 23 24v28c0 7 4 12 11 12h32c14 0 25 11 25 25v21c0 14-11 25-25 25h-32c-7 0-11 5-11 12v28c0 13-10 23-23 23h-27c-13 0-23-10-23-23v-28c0-7-4-12-11-12h-32c-14 0-25-11-25-25v-21c0-14 11-25 25-25h32c7 0 11-5 11-12v-28c0-13 10-24 23-24z" fill="url(#pad)" stroke="#d9e7ff" stroke-width="2"/>
+  <circle cx="890" cy="648" r="45" fill="url(#blue)" stroke="#fff" stroke-opacity=".7"/>
+  <circle cx="811" cy="730" r="45" fill="url(#green)" stroke="#fff" stroke-opacity=".7"/>
+  <circle cx="968" cy="730" r="45" fill="url(#red)" stroke="#fff" stroke-opacity=".7"/>
+  <circle cx="889" cy="804" r="45" fill="url(#gold)" stroke="#fff" stroke-opacity=".7"/>
+</svg>

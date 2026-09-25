@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1254 1254">
+  <defs>
+    <linearGradient id="base" x1="90" y1="330" x2="1170" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#328ff0"/>
+      <stop offset=".47" stop-color="#2956ce"/>
+      <stop offset=".76" stop-color="#cd91b7"/>
+      <stop offset="1" stop-color="#ff9357"/>
+    </linearGradient>
+    <linearGradient id="sweep" x1="755" y1="210" x2="1210" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e8d4db" stop-opacity=".65"/>
+      <stop offset=".55" stop-color="#ffc391" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#ff7d4d" stop-opacity=".5"/>
+    </linearGradient>
+    <linearGradient id="lower" x1="180" y1="760" x2="1010" y2="1190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#286de8"/>
+      <stop offset=".55" stop-color="#7265d2"/>
+      <stop offset="1" stop-color="#ff886b"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#base)" d="M0 0h1254v1254H0z"/>
+  <path fill="#1554d2" opacity=".35" d="M0 370C160 255 330 221 483 230c140 9 246 74 380 110 121 32 245 18 391-16v930H0z"/>
+  <path fill="url(#sweep)" d="M895 0h359v1065c-91 76-202 135-338 189H729c90-214 231-253 329-384 101-137 70-315 8-508C1008 184 940 65 895 0z"/>
+  <path fill="#ff9c70" opacity=".43" d="M1254 535c-72-62-152-91-245-77-129 20-194 129-254 265-48 109-106 182-221 231-110 46-239 57-381 139v161h1101z"/>
+  <path fill="url(#lower)" opacity=".78" d="M0 954c102-156 232-235 377-220 114 12 208 94 322 144 102 45 222 65 374 116-128 36-254 110-335 260H0z"/>
+</svg>
