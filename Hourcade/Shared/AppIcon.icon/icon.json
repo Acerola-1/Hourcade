@@ -1,34 +1,16 @@
 {
   "fill": {
-    "automatic-gradient": "srgb:0.18000,0.43000,0.88000,1.00000"
+    "automatic-gradient": "srgb:0.98000,0.98000,0.98000,1.00000"
   },
   "groups": [
     {
-      "name": "04 Controls",
+      "name": "Original Artwork",
       "layers": [
-        { "image-name": "04-controls.svg", "name": "Direction pad and buttons", "glass": false }
-      ],
-      "shadow": { "kind": "neutral", "opacity": 0.15 }
-    },
-    {
-      "name": "03 Controller",
-      "layers": [
-        { "image-name": "03-controller.svg", "name": "Controller shell", "glass": true }
-      ],
-      "shadow": { "kind": "neutral", "opacity": 0.35 },
-      "translucency": { "enabled": true, "value": 0.15 }
-    },
-    {
-      "name": "02 Clock",
-      "layers": [
-        { "image-name": "02-clock.svg", "name": "Clock dial and hands", "glass": false }
-      ],
-      "shadow": { "kind": "neutral", "opacity": 0.2 }
-    },
-    {
-      "name": "01 Background",
-      "layers": [
-        { "image-name": "01-background.svg", "name": "Blue and orange backdrop", "glass": false }
+        {
+          "image-name": "01-reference-artwork.png",
+          "name": "Hourcade gamepad and clock",
+          "glass": false
+        }
       ]
     }
   ],

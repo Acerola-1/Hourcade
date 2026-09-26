@@ -9,8 +9,6 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
-/// Kept beside the language preference because both live in the shared store and
-/// both are applied by the app scene.
 enum AppTheme: String, CaseIterable, Identifiable {
     case system
     case light

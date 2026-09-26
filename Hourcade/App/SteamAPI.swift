@@ -52,6 +52,10 @@ enum SteamAPI {
         let personaname: String
         let avatarfull: String?
         let loccountrycode: String?
+        // Live presence: 0 = offline, 1-6 = online/busy/away/snooze/trade/chat.
+        let personastate: Int?
+        // The localized title of the game the player is currently in.
+        let gameextrainfo: String?
     }
 
     private struct LevelEnvelope: Decodable, Sendable {
@@ -97,7 +101,7 @@ enum SteamAPI {
             let avatarURL = dto.avatarfull.flatMap { URL(string: $0) }.flatMap {
                 isAllowedAvatarURL($0) ? $0 : nil
             }
-            return SteamPlayer(name: dto.personaname, avatarURL: avatarURL, steamID: dto.steamid, level: levelSummary?.response?.player_level, countryCode: dto.loccountrycode)
+            return SteamPlayer(name: dto.personaname, avatarURL: avatarURL, steamID: dto.steamid, level: levelSummary?.response?.player_level, countryCode: dto.loccountrycode, personaState: dto.personastate, playingGame: dto.gameextrainfo)
         }
         return SteamLibrary(games: all, recent: latest, player: player)
     }
@@ -152,13 +156,31 @@ enum SteamAPI {
             .filter { $0.id > 0 && $0.fortnightMinutes > 0 }
             .sorted { $0.fortnightMinutes > $1.fortnightMinutes }
         var ids = Array(recent.prefix(6).map(\.id))
+        // The A4 wall shows the platform page's top eight and the M2 backdrop
+        // its first entry; make sure every game that can surface has covers.
+        let ordered = snapshot.library.games
+            .sorted { lhs, rhs in
+                if let r = GameListOrder.fortnight(lhs.fortnightMinutes, rhs.fortnightMinutes) { return r }
+                if let r = GameListOrder.lastPlayed(lhs.lastPlayedDate, rhs.lastPlayedDate) { return r }
+                return lhs.lifetimeMinutes > rhs.lifetimeMinutes
+            }
+        ids.append(contentsOf: ordered.prefix(8).map(\.id))
         if let favorite = snapshot.library.games.filter({ $0.id > 0 })
             .max(by: { $0.lifetimeMinutes < $1.lifetimeMinutes }) {
             ids.append(favorite.id)
         }
+        await runArtworkJobs(ids: ids, snapshot: snapshot)
+    }
+
+    /// Caches covers for one game (used for the M2 backdrop showcase).
+    static func cacheArtwork(for appID: Int) async {
+        await runArtworkJobs(ids: [appID], snapshot: nil)
+    }
+
+    private static func runArtworkJobs(ids: [Int], snapshot: SteamSnapshot?) async {
         var seen = Set<Int>()
-        var jobs = ids.filter { seen.insert($0).inserted }.map { ArtworkJob.game($0) }
-        if let player = snapshot.library.player, let url = player.avatarURL,
+        var jobs = ids.filter { $0 > 0 && seen.insert($0).inserted }.map { ArtworkJob.game($0) }
+        if let player = snapshot?.library.player, let url = player.avatarURL,
            let name = player.avatarName, isAllowedAvatarURL(url) {
             jobs.append(.avatar(url: url, name: name))
         }
@@ -171,7 +193,6 @@ enum SteamAPI {
         configuration.timeoutIntervalForResource = 30
         let session = URLSession(configuration: configuration, delegate: ArtworkRedirectDelegate(), delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        // Six recent games plus one unique lifetime favorite and the avatar; four jobs total in flight.
         await withTaskGroup(of: Void.self) { group in
             var pending = jobs.makeIterator()
             for _ in 0..<maximumConcurrentArtworkJobs {
@@ -208,7 +229,7 @@ enum SteamAPI {
               let cover = SteamWidgetStore.artworkURL(named: "steam-\(appID)-cover-hd"),
               let base = URL(string: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/\(appID)/")
         else { return }
-        // Never treat a legacy 460x215 header as a successful HD cache hit.
+        // A cached legacy 460x215 header is not an HD cache hit.
         var hasHero = isValidCachedArtwork(at: hero, kind: .hero)
         var hasCover = isValidCachedArtwork(at: cover, kind: .cover)
         if !hasHero {
@@ -500,6 +521,22 @@ actor SteamAchievementStore {
         return entry
     }
 
+    /// Synchronous disk-cache reads for building the widget snapshot; no network.
+    func cachedSnapshotProgress(appIDs: [Int]) -> (byGame: [String: [Int]], earned: Int, total: Int) {
+        loadFromDisk()
+        var byGame: [String: [Int]] = [:]
+        var earned = 0
+        var total = 0
+        for (appID, entry) in cache ?? [:] where Date().timeIntervalSince(entry.fetchedAt) < 30 * 86_400 {
+            earned += entry.earned
+            total += entry.total
+            if appIDs.contains(appID) {
+                byGame[String(appID)] = [entry.earned, entry.total]
+            }
+        }
+        return (byGame, earned, total)
+    }
+
     private func loadFromDisk() {
         guard cache == nil else { return }
         guard let file = Self.file, let data = try? Data(contentsOf: file) else {
@@ -554,11 +591,6 @@ actor SteamPriceStore {
             .first?.appending(path: "Hourcade/steam-prices.json")
     }
 
-    func current(appID: Int) -> SteamPriceEntry? {
-        loadFromDisk()
-        return cache?[appID]
-    }
-
     /// Cached sum only — never touches the network. Prices share one currency
     /// per sweep (the pricing region's), so no conversion happens here.
     func totalValue(appIDs: [Int]) -> (amount: Double, currency: String?)? {
@@ -585,9 +617,7 @@ actor SteamPriceStore {
         guard !stale.isEmpty else { return }
 
         var throttled = 0
-        // Pass 1: 国区
         stale = await sweepPass(stale, cc: "CN", throttled: &throttled)
-        // Pass 2: 港区补缺
         if !stale.isEmpty {
             stale = await sweepPass(stale, cc: "HK", throttled: &throttled)
         }

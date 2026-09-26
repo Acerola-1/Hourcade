@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1254 1254">
+  <defs>
+    <clipPath id="upper-dial"><path d="M0 0h1254v655H0z"/></clipPath>
+    <linearGradient id="dial" x1="330" y1="220" x2="940" y2="650" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#448bc2"/>
+      <stop offset="1" stop-color="#326fa9"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#upper-dial)">
+    <circle cx="627" cy="548" r="350" fill="url(#dial)"/>
+    <circle cx="627" cy="548" r="370" fill="none" stroke="#e8f5fa" stroke-width="32"/>
+    <g fill="none" stroke="#fffaf1" stroke-linecap="round" stroke-width="45">
+      <path d="M627 528V355"/>
+      <path d="m627 528 191-104"/>
+    </g>
+    <circle cx="627" cy="528" r="31" fill="#fffaf1"/>
+  </g>
+</svg>

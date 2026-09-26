@@ -39,7 +39,7 @@ enum NintendoAPI {
         let sessionToken: String
     }
 
-    // MARK: Sign-in
+    // MARK: - Sign-in
 
     /// The browser sign-in URL plus the PKCE secret behind its challenge.
     static func makeLoginRequest() -> LoginRequest {
@@ -85,7 +85,7 @@ enum NintendoAPI {
         return code
     }
 
-    // MARK: Sync
+    // MARK: - Sync
 
     static func load(savedSessionToken: String?, login: LoginCode?) async throws -> Sync {
         try Task.checkCancellation()
@@ -123,7 +123,7 @@ enum NintendoAPI {
         return Sync(games: games, accountName: profile?.name, avatarURL: profile?.avatar, sessionToken: sessionToken)
     }
 
-    // MARK: Requests
+    // MARK: - Requests
 
     private struct SessionTokenResponse: Decodable {
         let session_token: String
@@ -240,7 +240,6 @@ enum NintendoAPI {
             return NintendoGame(
                 name: name,
                 imageUri: entry.imageUrl ?? "",
-                shopUri: "",
                 totalPlayTime: max(entry.totalPlayedMinutes ?? 0, 0),
                 firstPlayedAt: unixSeconds(entry.firstPlayedAt),
                 lastPlayedAt: unixSeconds(entry.lastPlayedAt),
@@ -250,7 +249,7 @@ enum NintendoAPI {
         }
     }
 
-    // MARK: Plumbing
+    // MARK: - Plumbing
 
     private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
@@ -385,11 +384,6 @@ actor NintendoPriceStore {
     private static var priceFile: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?.appending(path: "Hourcade/nintendo-prices.json")
-    }
-
-    func current(titleId: String) -> NintendoPriceEntry? {
-        loadPrices()
-        return cache?[titleId.lowercased()]
     }
 
     /// Cached sum only — never touches the network. Entries are US dollars;

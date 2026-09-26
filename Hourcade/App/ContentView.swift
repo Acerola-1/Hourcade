@@ -1,29 +1,25 @@
 import SwiftUI
 
-private enum PreviewMode: String, CaseIterable, Identifiable {
-    case reference
-    case exploration
-
-    var id: Self { self }
-    var title: String {
-        switch self {
-        case .reference: L10n.tr("主方案")
-        case .exploration: L10n.tr("早期探索稿")
+/// The sidebar page hosting the widget gallery, titled 桌面组件预览.
+struct WidgetPreviewPage: View {
+    var body: some View {
+        PageShell(title: L10n.tr("桌面组件预览"), eyebrow: L10n.tr("设计"), subtitle: L10n.tr("按组件尺寸分组；预览使用真实同步数据。添加或更换组件请在桌面右键菜单中进行。")) {
+            WidgetStudioView()
         }
     }
 }
 
+/// The widget gallery. Reads the same merged snapshot file as the desktop
+/// widgets, so previews show exactly what the system will render. Designs are
+/// grouped by WidgetKit family: the desktop-scale extra-large cards first,
+/// then the medium minis.
 struct WidgetStudioView: View {
     @Environment(\.locale) private var locale
     @State private var selectedStyle: AggregateStyle = .heroNoValue
-    @State private var previewMode: PreviewMode = .reference
     @State private var featuredGameID = ""
-    @State private var showsDemo = false
-    @State private var liveSnapshot = SteamWidgetStore.load()?.gameSnapshot ?? .empty
+    @State private var liveSnapshot = WidgetSnapshotStore.load()?.gameSnapshot ?? .empty
 
-    private var snapshot: GameSnapshot {
-        showsDemo || previewMode == .exploration ? .demo : liveSnapshot
-    }
+    private var snapshot: GameSnapshot { liveSnapshot }
 
     private var featuredGame: FeaturedGame {
         snapshot.heroCandidates.first { $0.id == featuredGameID } ?? snapshot.heroCandidates[0]
@@ -31,48 +27,16 @@ struct WidgetStudioView: View {
 
     var body: some View {
         let _ = locale
-        ScrollView {
-            VStack(alignment: .leading, spacing: 15) {
-                brand
-                modeSelector
-                introduction
-                styleSelector
-                if previewMode == .reference {
-                    Picker(L10n.tr("数据来源"), selection: $showsDemo) {
-                        Text(L10n.tr("真实数据")).tag(false)
-                        Text(L10n.tr("演示数据")).tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 240)
-                }
-                preview
-                footnote
-            }
-            .frame(maxWidth: 830)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 18)
+        VStack(alignment: .leading, spacing: 14) {
+            styleSelector
+            preview
+            footnote
         }
-        .background {
-            ZStack {
-                WidgetPalette.ink
-                Image("HeroAetherfall")
-                    .resizable()
-                    .scaledToFill()
-                    .opacity(0.20)
-                    .blur(radius: 42)
-                    .accessibilityHidden(true)
-                LinearGradient(colors: [WidgetPalette.ink.opacity(0.68), WidgetPalette.ink.opacity(0.98)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            }
-            .clipped()
-        }
-        .frame(minWidth: 950, minHeight: 660)
-        .preferredColorScheme(.dark)
         .onReceive(NotificationCenter.default.publisher(for: SteamWidgetStore.didChange)) { _ in
-            liveSnapshot = SteamWidgetStore.load()?.gameSnapshot ?? .empty
+            liveSnapshot = WidgetSnapshotStore.load()?.gameSnapshot ?? .empty
         }
-        .task(id: previewMode == .reference && selectedStyle == .heroNoValue) {
-            guard previewMode == .reference && selectedStyle == .heroNoValue else { return }
+        .task(id: selectedStyle == .heroNoValue) {
+            guard selectedStyle == .heroNoValue else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(8))
                 guard !Task.isCancelled else { break }
@@ -85,155 +49,123 @@ struct WidgetStudioView: View {
         }
     }
 
-    private var modeSelector: some View {
-        HStack {
-            Text(L10n.tr("设计版本"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.65))
-            Picker(L10n.tr("设计版本"), selection: $previewMode) {
-                ForEach(PreviewMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 300)
-            .labelsHidden()
-            .onChange(of: previewMode) { _, mode in
-                if mode == .exploration && selectedStyle == .heroNoValue {
-                    selectedStyle = .atlas
-                }
-            }
-            Spacer()
-            Text(previewMode == .reference
-                 ? L10n.tr("A2 无金额版 · B–D 参考总览图")
-                 : L10n.tr("保留此前的视觉实验"))
-                .font(.system(size: 10))
-                .foregroundStyle(.white.opacity(0.55))
-        }
-    }
-
-    private var brand: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "gamecontroller.fill")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 36, height: 36)
-                .background(WidgetPalette.steam.gradient, in: RoundedRectangle(cornerRadius: 11))
-            VStack(alignment: .leading, spacing: 1) {
-                Text("HOURCADE")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .tracking(1.1)
-                Text(L10n.tr("组件工作室"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.60))
-            }
-            Spacer()
-            Text(snapshot.isDemo ? L10n.tr("演示 · 示例数据") : L10n.tr("实时 · Steam 数据"))
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .tracking(0.8)
-                .foregroundStyle(.white.opacity(0.70))
-                .padding(.horizontal, 11)
-                .padding(.vertical, 7)
-                .background(Color.white.opacity(0.10), in: Capsule())
-        }
-        .foregroundStyle(.white)
-    }
-
-    private var introduction: some View {
-        HStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.format("%@ · 方案 %@", previewMode.title, selectedStyle.letter))
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(1)
-                    .foregroundStyle(.white.opacity(0.60))
-                Text(selectedStyle.title)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text(L10n.tr("Nintendo、PlayStation 与 Steam，一张卡片看完你的游戏生活。"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.66))
-            }
-            Spacer()
-            Text(L10n.tr("超大号 · 聚合组件"))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.74))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.white.opacity(0.10), in: Capsule())
-        }
-    }
+    // MARK: Style selection, grouped by widget family
 
     private var styleSelector: some View {
-        HStack(spacing: 8) {
-            ForEach(previewMode == .reference ? [.heroNoValue, .atlas, .platforms, .gallery] : [.atlas, .platforms, .gallery]) { (style: AggregateStyle) in
-                Button {
-                    selectedStyle = style
-                } label: {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(WidgetFamilyGroup.allCases) { group in
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Text(style.letter)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .frame(width: 23, height: 23)
-                            .background(Color.white.opacity(selectedStyle == style ? 0.20 : 0.08), in: RoundedRectangle(cornerRadius: 7))
-                        Text(style.title)
-                            .font(.system(size: 12, weight: selectedStyle == style ? .semibold : .medium))
-                        Spacer(minLength: 0)
+                        Text(group.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Rectangle().fill(.quaternary).frame(height: 1)
+                        Text(L10n.format("%1$d 个方案", group.styles.count))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
                     }
-                    .foregroundStyle(.white.opacity(selectedStyle == style ? 1 : 0.72))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.white.opacity(selectedStyle == style ? 0.15 : 0.06), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(selectedStyle == style ? 0.24 : 0.08)))
+                    HStack(spacing: 8) {
+                        ForEach(group.styles) { style in
+                            styleCard(style)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selectedStyle == style ? .isSelected : [])
             }
+        }
+    }
+
+    private func styleCard(_ style: AggregateStyle) -> some View {
+        Button {
+            selectedStyle = style
+        } label: {
+            HStack(spacing: 8) {
+                Text(style.letter)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .frame(width: 23, height: 23)
+                    .background(Color.primary.opacity(selectedStyle == style ? 0.16 : 0.06), in: RoundedRectangle(cornerRadius: 7))
+                Text(style.title)
+                    .font(.system(size: 12, weight: selectedStyle == style ? .semibold : .medium))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.primary.opacity(selectedStyle == style ? 1 : 0.65))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(Color.primary.opacity(selectedStyle == style ? 0.10 : 0.045), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(selectedStyle == style ? 0.22 : 0.08)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selectedStyle == style ? .isSelected : [])
+    }
+
+    // MARK: Live preview canvas
+
+    private var isMedium: Bool {
+        switch selectedStyle {
+        case .mini, .steamMini, .nintendoMini, .playStationMini: true
+        default: false
         }
     }
 
     private var preview: some View {
-        VStack(alignment: .leading, spacing: 15) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(L10n.tr("桌面预览"))
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
-                Text("720 × 360 pt")
+                Text(isMedium ? "329 × 155 pt · 中号" : "720 × 360 pt · 超大号")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.white)
 
             Group {
-                if previewMode == .reference {
-                    AggregateCard(style: selectedStyle, snapshot: snapshot, featuredGame: featuredGame)
-                } else {
-                    ExplorationCard(style: selectedStyle, snapshot: snapshot)
-                }
+                AggregateCard(style: selectedStyle, snapshot: snapshot, featuredGame: featuredGame)
+                    .frame(width: isMedium ? 329 : 720,
+                           height: isMedium ? 155 : 360)
             }
-                .frame(width: 720, height: 360)
-                .clipShape(RoundedRectangle(cornerRadius: 24))
-                .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.white.opacity(0.20)))
-                .shadow(color: .black.opacity(0.42), radius: 22, y: 14)
-                .frame(maxWidth: .infinity)
-                .frame(height: 392)
+            .clipShape(RoundedRectangle(cornerRadius: isMedium ? 18 : 24))
+            .overlay(RoundedRectangle(cornerRadius: isMedium ? 18 : 24).strokeBorder(Color.primary.opacity(0.15)))
+            .shadow(color: .black.opacity(0.30), radius: 16, y: 10)
+            .frame(maxWidth: .infinity)
+            .frame(height: isMedium ? 220 : 392)
         }
-        .padding(20)
-        .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.white.opacity(0.11)))
     }
 
     private var footnote: some View {
         HStack(spacing: 9) {
             Circle().fill(WidgetPalette.nintendo).frame(width: 6, height: 6)
-            Text(snapshot.isDemo
-                 ? L10n.tr("演示数据：保留主方案的示意数值与插画。")
-                 : L10n.tr("真实数据：按已接入平台的官方接口同步；逐日记录尚未提供，不填演示数值。"))
+            Text(snapshot.hasData
+                 ? L10n.tr("真实数据：按已接入平台的官方接口同步；逐日记录尚未提供。")
+                 : L10n.tr("尚未同步：先在平台账号页完成同步，再回到这里查看预览。"))
                 .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.63))
+                .foregroundStyle(.secondary)
             Spacer()
             Text("SwiftUI · WidgetKit")
                 .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
+/// The studio lists widgets grouped by WidgetKit family: the desktop-scale
+/// extra-large cards first, then the medium minis (all-platform + per-platform).
+private enum WidgetFamilyGroup: CaseIterable, Identifiable {
+    case extraLarge
+    case medium
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .extraLarge: L10n.tr("超大号 · 桌面聚合")
+        case .medium: L10n.tr("中号 · 迷你汇总")
+        }
+    }
+
+    var styles: [AggregateStyle] {
+        switch self {
+        case .extraLarge: [.heroNoValue, .atlas, .platforms, .gallery, .galleryNintendo, .galleryPlayStation]
+        case .medium: [.mini, .steamMini, .nintendoMini, .playStationMini]
         }
     }
 }

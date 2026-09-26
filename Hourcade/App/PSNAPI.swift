@@ -42,7 +42,7 @@ enum PSNAPI {
         else { throw PSNError.invalidCallback }
         if let error = errors.first {
             guard let value = error.value, !value.isEmpty else { throw PSNError.invalidCallback }
-            // Do not surface error_description or other untrusted service text.
+            // error_description and the rest of the service payload are untrusted text.
             if value == "login_required" || value == "invalid_grant" {
                 throw PSNError.expiredSession
             }
@@ -114,8 +114,7 @@ enum PSNAPI {
 
     static func load(
         savedRefreshToken: String?,
-        accessCode: String? = nil,
-        saveRefreshToken: (@Sendable (String) throws -> Void)? = nil
+        accessCode: String? = nil
     ) async throws -> (PSNLibrary, String?) {
         try Task.checkCancellation()
 
@@ -141,10 +140,6 @@ enum PSNAPI {
             throw PSNError.missingSession
         }
 
-        // Persist rotation before cancellation checks or any fallible profile/library work.
-        if let refreshToken = tokens.refresh_token {
-            try saveRefreshToken?(refreshToken)
-        }
         try Task.checkCancellation()
 
         // Always the signed-in account. The Online ID and avatar are display
@@ -361,7 +356,7 @@ enum PSNAPI {
             throw CancellationError()
         } catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
-            // Never expose NSError userInfo, which may contain authenticated URLs.
+            // URLError userInfo can carry authenticated URLs, so it never reaches the UI.
             throw PSNError.unavailable
         } catch let error as PSNError {
             throw error
@@ -579,6 +574,24 @@ actor PSNTrophyStore {
         return entry
     }
 
+    /// Synchronous disk-cache reads for building the widget snapshot; no network.
+    func cachedSnapshotProgress(titleIds: [String]) -> (byTitle: [String: [Int]], earned: Int, defined: Int, platinum: Int) {
+        loadFromDisk()
+        var byTitle: [String: [Int]] = [:]
+        var earned = 0
+        var defined = 0
+        var platinum = 0
+        for (titleId, entry) in cache ?? [:] {
+            earned += entry.total
+            defined += entry.defined
+            platinum += entry.platinum
+            if titleIds.contains(titleId) {
+                byTitle[titleId] = [entry.total, entry.defined]
+            }
+        }
+        return (byTitle, earned, defined, platinum)
+    }
+
     private func currentToken() async -> String? {
         if let token, Date().timeIntervalSince(token.fetchedAt) < 3_000 { return token.value }
         guard let value = await PSNAPI.accessToken(savedRefreshToken: KeychainSecret.read("psn.refreshToken")) else { return nil }
@@ -665,11 +678,6 @@ actor PSNPriceStore {
     private static var priceFile: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?.appending(path: "Hourcade/psn-prices.json")
-    }
-
-    func current(titleId: String) -> PSNPriceEntry? {
-        loadFromDisk()
-        return cache?[titleId]
     }
 
     func totalValue(titleIds: [String]) -> (amount: Double, currency: String?)? {

@@ -22,8 +22,6 @@ struct OverviewView: View {
     private var gameEntries: Int {
         (steam?.library.games.count ?? 0) + (nintendo?.games.count ?? 0) + (playStation?.library.games.count ?? 0)
     }
-    // Derived from the platform list so a newly added platform needs no change here.
-    private var platformCount: Int { GamePlatform.allCases.count }
     private var connectedAny: Bool { connectedCount > 0 }
 
     /// Each known platform paired with whatever this account has for it, so the
@@ -83,8 +81,8 @@ struct OverviewView: View {
                 Text(L10n.tr("你的游戏时间"))
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                 if connectedCount == 0 {
-                    // Only shown while there is nothing to summarize; once
-                    // platforms connect, the summary card carries the counts.
+                    // This hint belongs to the empty state; the summary card
+                    // carries the counts once platforms connect.
                     Text(L10n.tr("连接平台后，游玩记录会汇集在这里。"))
                         .foregroundStyle(.secondary)
                 }
@@ -212,7 +210,7 @@ struct OverviewView: View {
 
     // MARK: 近期游玩（全平台合并）
 
-    private struct RecentGame: Identifiable {
+    private struct RecentRow: Identifiable {
         let id: String
         let name: String
         let platform: GamePlatform
@@ -227,8 +225,8 @@ struct OverviewView: View {
 
     /// Every connected platform contributes its best-known last-played date and
     /// the rows merge newest first, so a new platform needs no change here.
-    private var recentGames: [RecentGame] {
-        var candidates: [RecentGame] = []
+    private var recentGames: [RecentRow] {
+        var candidates: [RecentRow] = []
 
         if let steam {
             // Owned games carry `rtime_last_played`; snapshots saved before that
@@ -238,7 +236,7 @@ struct OverviewView: View {
                 ? steam.library.recent
                 : dated.sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
             candidates += ranked.prefix(6).map { game in
-                RecentGame(
+                RecentRow(
                     id: "steam-\(game.id)",
                     name: game.name,
                     platform: .steam,
@@ -257,7 +255,7 @@ struct OverviewView: View {
         if let nintendo {
             let ranked = nintendo.games.sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
             candidates += ranked.prefix(6).map { game in
-                RecentGame(
+                RecentRow(
                     id: "nintendo-\(game.id)",
                     name: game.name,
                     platform: .nintendo,
@@ -274,7 +272,7 @@ struct OverviewView: View {
         if let playStation {
             let ranked = playStation.library.games.sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
             candidates += ranked.prefix(6).map { game in
-                RecentGame(
+                RecentRow(
                     id: "psn-\(game.id)",
                     name: game.name,
                     platform: .playStation,
@@ -321,7 +319,7 @@ struct OverviewView: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
-                    Text(lastPlayedText(game.lastPlayed))
+                    Text(RelativeTime.text(for: game.lastPlayed))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(minWidth: 56, alignment: .trailing)
@@ -333,19 +331,11 @@ struct OverviewView: View {
         .background(.quaternary.opacity(0.40), in: RoundedRectangle(cornerRadius: 18))
     }
 
-    private func caption(for game: RecentGame) -> String {
+    private func caption(for game: RecentRow) -> String {
         let hours = L10n.format("%lld小时 %lld分钟", game.minutes / 60, game.minutes % 60)
         return game.minutesIsRecentWindow
             ? L10n.format("%1$@ · 近两周 %2$@", game.platform.title, hours)
             : L10n.format("%1$@ · 总计 %2$@", game.platform.title, hours)
-    }
-
-    private func lastPlayedText(_ date: Date?) -> String {
-        guard let date else { return "—" }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = L10n.locale
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 

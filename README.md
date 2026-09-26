@@ -1,29 +1,67 @@
 # Hourcade
 
-面向 macOS 15+ 的游戏游玩数据桌面小组件 Demo，使用 Swift 6、SwiftUI 和 WidgetKit。
+macOS 桌面小组件，把 Steam、Nintendo Switch 和 PlayStation 的游玩数据汇成一张桌面大卡。宿主 App 负责连接账号、同步数据和管理缓存；所有卡片渲染由宿主与 WidgetKit 扩展共享同一套 Swift 6 / SwiftUI 代码。
 
-## 现在可以体验的内容
+## 功能
 
-- 宿主 App 默认打开“总览”：已连接平台的累计时长、游戏记录数、各平台状态，以及 Steam 近两周游玩都显示在这里。左侧选择 Steam、Nintendo Switch、PlayStation 进行连接；“组件预览”会在独立窗口打开原有设计稿，A、A2、B、C、D 和早期素材均保留。
-- Steam：首次连接页内有获取个人资料链接和 Web API Key 的两步说明。连接后只显示账号、密钥已保存状态与最近同步时间；不会留下空密码框。使用官方 GetOwnedGames / GetRecentlyPlayedGames 同步，Key 保存在本机钥匙串，数据保存在本机 Application Support，重开 App 会自动刷新。
-- Nintendo Switch：普通账号连接仍在适配中。已有 nxapi 的用户可展开实验性入口，调用本机已登录的 nxapi CLI 读取 NSO PlayLog。nxapi 使用非公开接口，登录默认依赖第三方认证辅助服务；此项目没有嵌入或改写 nxapi 的 AGPL 代码。
-- PlayStation：账号页提供系统网页登录入口，使用 [psn-api](https://github.com/achievements-app/psn-api) 研究出的非公开 OAuth 请求流程；如失败，仍有高级 NPSSO 会话入口。两种方式都需要 Online ID，刷新令牌存本机钥匙串。网页登录尚未用真实 PSN 账号验证，可能因 Sony 更新而失败。**仅有 PSN ID 不足以调用接口。**
+**桌面组件（10 款，命名 A1–A6 / M1–M4）**
 
-- 以最后一张 A–D 总览图为起点实现**超大号**聚合布局：A 英雄封面、A2 无金额版、B 数据概览、C 平台分栏、D 横向游戏墙。A 与 A2 已按后续需求改版。
-- A 固定展示全部时间的总时长、各平台时长与占比，以及全局游戏数、当前标价合计和价值占比。A2 沿用同一背景选择逻辑，参考新的 Game Life 截图布局，只显示游玩时长、游戏数和平台占比，不显示任何金额。
-- A 与 A2 的大图右侧共用近期游戏信息，展示游戏名、平台和该游戏近 14 天的游玩时长；底栏右侧只显示近 14 天总时长。底栏使用一整块圆角毛玻璃：取当前背景插画的对应区域模糊，再叠半透明中性色；栏内只用细分隔线，不使用外描边。
-- A 与 A2 的背景从近 14 天游玩时长最高的五款游戏中随机切换，不连续重复。没有近期游玩的平台不会进入候选；三个平台都没有近期游玩时，使用全部时间游玩最久的一款游戏。宿主预览每 8 秒交叉淡入；WidgetKit 通过每 30 分钟一条的随机时间线轮换，实际刷新时间由系统决定。
-- 宿主 App 中还有“早期探索稿”一栏，保留此前制作的四种视觉实验，供后续比较和取材。WidgetKit 扩展注册的是五种主方案布局。
-- 画面使用项目内的原创演示插画、虚构游戏名与模拟游玩数据，界面以 `DEMO` 标识。
+- 超大号（systemExtraLarge）：A1 游戏人生（英雄封面）、A2 数据概览（环形占比 + 动态活动面板）、A3 平台（竖排数据 + 三张平台封面）、A4/A5/A6 游戏墙（Steam / Switch / PS 各自的 Top 封面墙 + 成就/奖杯数）
+- 中号（systemMedium）：M1 迷你汇总（全平台）、M2/M3/M4 单平台迷你（文字排行 + 封面背景）
+- 组件与「桌面组件预览」页读取同一份合并快照（App Group 内 `accounts-widget.json`），预览即所得
+- 英雄封面、近期游戏轮换由随机时间线驱动，宿主预览每 8 秒交叉淡入
 
-打开 `Hourcade.xcodeproj`，选择 **Hourcade** scheme，运行 macOS App。在侧栏选择平台进行配置，或点击“组件预览”打开设计窗口。当前只制作超大号；早期探索稿由 `ExplorationCard` 保存在宿主 App 中。
+**数据接入**
 
-## 开发
+- Steam：Web API（GetOwnedGames / GetRecentlyPlayedGames / GetSteamLevel / GetPlayerSummaries），Web API Key 存本机钥匙串
+- Nintendo Switch：My Nintendo / Nintendo Store App 通道（OAuth + PKCE 浏览器登录），近 14 天时长来自官方每日记录
+- PlayStation：PSN 浏览器登录（OAuth），累计时长 + 账号级奖杯；单游戏奖杯按行懒加载
+- 启动即自动刷新所有已连接平台；任何一页都只读缓存，网络清扫在同步后后台执行
 
-使用支持 Swift 6 的 Xcode 打开工程。最低部署目标是 macOS 15。命令行编译：
+**游戏价值（参考价值）**
+
+- Steam 走商店 appdetails（国区优先、港服补缺，2.5s/次限速）；PSN 走匿名商店 GraphQL（chihiro 旧接口兜底）；Nintendo 走美区 eShop 价格（nsuid 映射来自社区 titledb，7 天缓存）
+- 查询区固定港服（库存覆盖 92%），展示货币固定人民币，按当日汇率（er-api，frankfurter 备用）折算；所有价格磁盘缓存 24 小时
+
+## 系统要求
+
+- macOS 15+，Xcode 27（Swift 6 工具链）
+- 签名需要配置开发团队；App Group 为 `$(TeamID).dev.acerola.Hourcade`
+
+## 构建
+
+打开 `Hourcade.xcodeproj`，选择 **Hourcade** scheme 运行。命令行：
 
 ```sh
-xcodebuild -project Hourcade.xcodeproj -scheme Hourcade -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project Hourcade.xcodeproj -scheme Hourcade \
+  -configuration Debug -destination 'platform=macOS,arch=arm64' build
 ```
 
-Steam 已用真实账号完成一次成功同步并核对了总览呈现；启动自动刷新曾遇到一次网络超时，手动重试成功，失败时保留上次数据。Nintendo 与 PSN 尚未用真实账号做端到端验证，也没有定期后台同步或将真实结果写入 WidgetKit。小组件中的近 14 天数据、游戏插画与当前标价合计仍为演示数据。Nintendo NSO PlayLog 不提供逐游戏近 14 天时长；需要另外接入家长控制每日摘要。PSN 接口仅提供累计时长，近 14 天数据需要从持续保存的快照计算。三平台的当前标价合计都需要独立价格来源、地区与版本匹配。发布前还需确定正式 App 名称、bundle ID、签名团队与 App Group；当前名称 `Hourcade` 和 bundle ID `dev.acerola.Hourcade` 是占位值。
+首次使用：在侧边栏选择平台完成连接（Steam 需要个人资料链接 + Web API Key，Nintendo / PSN 走系统浏览器登录），数据就绪后回到桌面添加组件。
+
+## 工程结构
+
+```
+Hourcade/
+  App/            宿主界面与平台 API
+    AccountDashboard.swift        侧边栏壳、导航、全平台同步编排、PriceValue
+    PlatformPageChrome.swift      页面骨架、统计行、三平台游戏列表
+    PlatformSettingsPages.swift   Steam / Nintendo / PSN 账号页
+    GeneralSettingsView.swift     常规设置（语言、主题、缓存）与封面缓存管理
+    OverviewView.swift            总览页与通用封面管线（CoverStore）
+    SteamAPI.swift / PSNAPI.swift / NintendoAPI.swift
+    SteamWebLogin / PSNWebLogin / NintendoWebLogin.swift
+  Shared/         宿主与组件扩展共享（同时编入两个 target）
+    GameSnapshot.swift            组件数据模型、卡片样式枚举、Steam 快照存储
+    PlatformSnapshots.swift       Switch/PSN 快照、合并快照 WidgetSnapshotStore
+    AggregateCards.swift          A1–A6 / M1–M4 全部卡片视图
+    KeychainSecret.swift / DisplayFormat.swift / Localization.swift
+  Widgets/        WidgetKit 扩展入口（HourcadeWidgets.swift）
+历史资产/          早期概念图与初版文档（已被现状取代，仅作参考）
+Design/IconConcepts/  App 图标概念稿与决策记录
+HANDOFF.md         交接记录：已验证结论、用户决定、调查证据
+```
+
+## 状态说明
+
+Steam、Nintendo、PSN 三平台均已用真实账号完成端到端同步并核对了总览与组件呈现。价格来源均为公开或半公开接口，可能随服务端变更失效——失效时对应游戏显示「—」，不影响其余数据。详细的服务端怪癖、决策依据与调查证据见 `HANDOFF.md`。

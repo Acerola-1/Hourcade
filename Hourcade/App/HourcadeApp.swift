@@ -16,12 +16,5 @@ struct HourcadeApp: App {
                 .preferredColorScheme(L10n.colorScheme)
         }
         .defaultSize(width: 1040, height: 760)
-
-        Window(L10n.tr("组件预览"), id: "widget-studio") {
-            WidgetStudioView()
-                .environment(\.locale, L10n.locale)
-                .preferredColorScheme(L10n.colorScheme)
-        }
-        .defaultSize(width: 1040, height: 760)
     }
 }

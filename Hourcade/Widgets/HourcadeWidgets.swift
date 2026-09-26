@@ -9,15 +9,13 @@ struct AggregateEntry: TimelineEntry {
 
 struct AggregateProvider: TimelineProvider {
     let style: AggregateStyle
-    let isDemo: Bool
 
     private var snapshot: GameSnapshot {
-        isDemo ? .demo : WidgetSnapshotStore.load()?.gameSnapshot ?? .empty
+        WidgetSnapshotStore.load()?.gameSnapshot ?? .empty
     }
 
     func placeholder(in context: Context) -> AggregateEntry {
-        let data: GameSnapshot = isDemo ? .demo : .empty
-        return AggregateEntry(date: .now, snapshot: data, featuredGame: data.heroCandidates[0])
+        AggregateEntry(date: .now, snapshot: .empty, featuredGame: .empty)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (AggregateEntry) -> Void) {
@@ -28,7 +26,7 @@ struct AggregateProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<AggregateEntry>) -> Void) {
         let data = snapshot
         let start = Date.now
-        let key = "featured.\(isDemo).\(style.rawValue)"
+        let key = "featured.\(style.rawValue)"
         let previous = L10n.defaults.string(forKey: key)
         let candidates = data.heroCandidates
         let alternatives = candidates.filter { $0.id != previous }
@@ -41,23 +39,34 @@ struct AggregateProvider: TimelineProvider {
 
 struct AggregateWidget: Widget {
     let style: AggregateStyle
-    let isDemo: Bool
 
     init() { self.init(style: .heroNoValue) }
 
-    init(style: AggregateStyle, isDemo: Bool = false) {
+    init(style: AggregateStyle) {
         self.style = style
-        self.isDemo = isDemo
+    }
+
+    // The mini family composes for the medium size; the desktop cards are extra-large.
+    private var supportedFamilies: [WidgetFamily] {
+        switch style {
+        case .mini, .steamMini, .nintendoMini, .playStationMini: [.systemMedium]
+        default: [.systemExtraLarge]
+        }
     }
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: isDemo ? style.widgetKind : style.liveWidgetKind, provider: AggregateProvider(style: style, isDemo: isDemo)) { entry in
+        StaticConfiguration(kind: style.liveWidgetKind, provider: AggregateProvider(style: style)) { entry in
             AggregateCard(style: style, snapshot: entry.snapshot, featuredGame: entry.featuredGame)
-                .containerBackground(for: .widget) { WidgetPalette.ink }
+                .containerBackground(for: .widget) {
+                    // Match the platform minis' own gradient so any rounding
+                    // seams blend into the card instead of showing as a dark rim.
+                    LinearGradient(colors: [WidgetPalette.ink, WidgetPalette.ink],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                }
         }
-        .configurationDisplayName(Text(verbatim: "\(isDemo ? L10n.widget("DEMO") : L10n.tr("主方案")) · \(style.letter) \(style.title)"))
-        .description(Text(verbatim: isDemo ? L10n.widget("Demo data") : L10n.widget("Your gaming life, at a glance.")))
-        .supportedFamilies([.systemExtraLarge])
+        .configurationDisplayName(Text(verbatim: "\(style.letter) \(style.title)"))
+        .description(Text(verbatim: L10n.widget("Your gaming life, at a glance.")))
+        .supportedFamilies(supportedFamilies)
         .contentMarginsDisabled()
     }
 }
@@ -69,9 +78,11 @@ struct HourcadeWidgets: WidgetBundle {
         AggregateWidget(style: .atlas)
         AggregateWidget(style: .platforms)
         AggregateWidget(style: .gallery)
-        AggregateWidget(style: .heroNoValue, isDemo: true)
-        AggregateWidget(style: .atlas, isDemo: true)
-        AggregateWidget(style: .platforms, isDemo: true)
-        AggregateWidget(style: .gallery, isDemo: true)
+        AggregateWidget(style: .galleryNintendo)
+        AggregateWidget(style: .galleryPlayStation)
+        AggregateWidget(style: .mini)
+        AggregateWidget(style: .steamMini)
+        AggregateWidget(style: .nintendoMini)
+        AggregateWidget(style: .playStationMini)
     }
 }
