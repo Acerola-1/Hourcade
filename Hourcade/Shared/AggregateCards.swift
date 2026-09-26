@@ -207,38 +207,6 @@ private struct HeroBackdropGrading: View {
 
 private let heroNoValueCoordinateSpace = "HeroNoValueCard"
 
-private struct FrostedHeroTray: View {
-    let featuredGame: FeaturedGame
-    let canvasSize: CGSize
-    let height: CGFloat
-    let cornerRadius: CGFloat
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .topLeading) {
-                if !featuredGame.artworkName.isEmpty {
-                    ForEach([featuredGame]) { game in
-                        GameArtwork(name: game.artworkName, role: .hero, maxPixelSize: 240)
-                            .scaledToFill()
-                            .frame(width: canvasSize.width, height: canvasSize.height)
-                            .offset(x: -18, y: -(canvasSize.height - 18 - height))
-                            .blur(radius: 18)
-                            .transition(.opacity)
-                            .accessibilityHidden(true)
-                    }
-                }
-                Color(red: 0.34, green: 0.40, blue: 0.46)
-                    .opacity(0.62)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                Color.white.opacity(0.07)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-            }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        }
-    }
-}
-
 private struct FrostedTrayDivider: View {
     var body: some View {
         Rectangle()
@@ -248,9 +216,11 @@ private struct FrostedTrayDivider: View {
     }
 }
 
-private struct UltraSubtleShelfGlassBackdrop: View {
+/// Keep both information surfaces in the same image space and material tone.
+private struct HeroGlassBackdrop: View {
     let featuredGame: FeaturedGame
     let canvasSize: CGSize
+    let cornerRadius: CGFloat
 
     var body: some View {
         GeometryReader { proxy in
@@ -273,9 +243,9 @@ private struct UltraSubtleShelfGlassBackdrop: View {
                 Color.black.opacity(0.12)
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.6)
             )
         }
@@ -283,12 +253,13 @@ private struct UltraSubtleShelfGlassBackdrop: View {
 }
 
 private struct CompactFeaturedGameSummary: View {
-    let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
+
+    private var playedInFortnight: Bool { featuredGame.fortnightMinutes > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(L10n.widget(snapshot.fortnightPlayedMinutes > 0 ? "FROM YOUR LAST 14 DAYS" : "MOST PLAYED · ALL TIME"))
+            Text(L10n.widget(playedInFortnight ? "FROM YOUR LAST 14 DAYS" : "FEATURED GAME"))
                 .font(.system(size: 9, weight: .medium))
                 .tracking(0.4)
                 .foregroundStyle(.white.opacity(0.72))
@@ -296,12 +267,10 @@ private struct CompactFeaturedGameSummary: View {
                 .font(.system(size: 17, weight: .semibold))
             HStack(spacing: 6) {
                 PlatformBrandLogo(platform: featuredGame.platform, size: 23)
-                // The caption above ("FROM YOUR LAST 14 DAYS") already names
-                // the period; this line carries only the duration itself.
                 Text(featuredGame.id == "empty"
                      ? L10n.widget("Connect a platform or sync play history")
-                     : L10n.widget(snapshot.fortnightPlayedMinutes > 0 ? "%1$@ in 14 days" : "Played %1$@ all time",
-                                   snapshot.fortnightPlayedMinutes > 0 ? featuredGame.fortnightMinutes.hoursMinutesLabel : featuredGame.lifetimeMinutes.hoursLabel))
+                     : L10n.widget(playedInFortnight ? "%1$@ in 14 days" : "Played %1$@ all time",
+                                   playedInFortnight ? featuredGame.fortnightMinutes.hoursMinutesLabel : featuredGame.lifetimeMinutes.hoursLabel))
                     .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.78))
             }
@@ -316,6 +285,12 @@ private struct CompactFeaturedGameSummary: View {
 private struct HeroNoValueCard: View {
     let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
+
+    private var otherRecentGames: [RecentGame] {
+        Array(snapshot.recentGames
+            .filter { $0.id != featuredGame.id || $0.platform != featuredGame.platform }
+            .prefix(3))
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -355,27 +330,32 @@ private struct HeroNoValueCard: View {
                         }
                         .frame(width: metricWidth, alignment: .leading)
                         VStack(alignment: .leading, spacing: 8) {
-                            CompactFeaturedGameSummary(snapshot: snapshot, featuredGame: featuredGame)
+                            CompactFeaturedGameSummary(featuredGame: featuredGame)
                                 .frame(maxHeight: .infinity, alignment: .bottom)
 
                             Text(L10n.widget("Recently Played"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.80))
 
-                            HStack(spacing: 6) {
-                                ForEach(0..<3, id: \.self) { index in
-                                    if index < snapshot.recentGames.count {
-                                        SmallCover(game: snapshot.recentGames[index])
-                                    } else {
-                                        EmptyGameCover()
+                            HStack(spacing: 7) {
+                                Spacer(minLength: 0)
+                                if otherRecentGames.isEmpty {
+                                    Text(L10n.widget("No history"))
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.white.opacity(0.68))
+                                } else {
+                                    ForEach(otherRecentGames) { game in
+                                        HeroRecentCover(game: game)
+                                            .frame(width: 57, height: 70)
                                     }
                                 }
+                                Spacer(minLength: 0)
                             }
-                            .frame(height: 55)
+                            .frame(height: 70)
                         }
                         .padding(10)
-                        .frame(width: 228, height: max(0, geometry.size.height - 18 * 2 - 82 - 76), alignment: .bottom)
-                        .background(UltraSubtleShelfGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size))
+                        .frame(width: 228, height: max(0, geometry.size.height - 18 * 2 - 82 - 64), alignment: .bottom)
+                        .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
                     }
 
                     Spacer(minLength: 12)
@@ -390,7 +370,7 @@ private struct HeroNoValueCard: View {
                             .frame(width: 130)
                     }
                     .frame(height: 82)
-                    .background(FrostedHeroTray(featuredGame: featuredGame, canvasSize: geometry.size, height: 82, cornerRadius: 20))
+                    .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
                 }
                 .foregroundStyle(.white)
                 .padding(18)
@@ -401,15 +381,7 @@ private struct HeroNoValueCard: View {
     }
 }
 
-/// One tray cell per platform, structured into three fixed-height rows so all
-/// platforms align across the card:
-/// - Row 1 (17pt): lifetime playtime
-/// - Row 2 (12pt): game count and account/trophy level
-/// - Row 3 (12pt): badges (Steam achievements, PSN 4-tier trophies, or hidden placeholder)
-///
-/// The bottom capsule bar visualizes the platform's playtime share, avoiding redundant
-/// percentage text. Missing or empty rows render a hidden placeholder (`Text(" ").opacity(0)`)
-/// to prevent `EmptyView` from collapsing the slot.
+/// Each platform uses the same identity, value, detail, and share-bar baselines.
 private struct NoValuePlatformStat: View {
     let activity: PlatformActivity
     let totalPlayedMinutes: Int
@@ -420,31 +392,36 @@ private struct NoValuePlatformStat: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 9) {
-                PlatformBrandLogo(platform: activity.platform, size: 32)
-                    .padding(.top, -2)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(activity.playtimeLabel)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                        .frame(height: 17, alignment: .center)
-                    secondRow
-                        .font(.system(size: 8.5))
-                        .foregroundStyle(.white.opacity(0.77))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(height: 12, alignment: .center)
-                    thirdRow
-                        .font(.system(size: 8.5))
-                        .foregroundStyle(.white.opacity(0.77))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(height: 12, alignment: .center)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                PlatformBrandLogo(platform: activity.platform, size: 21)
+                Text(activity.platform.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.86))
+                    .lineLimit(1)
+                Spacer(minLength: 2)
+                progressBadge
             }
+            .frame(height: 21)
+
+            Text(activity.playtimeLabel)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .frame(height: 19, alignment: .leading)
+                .padding(.top, 3)
+
+            detailRow
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.76))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(height: 12, alignment: .leading)
+                .padding(.top, 2)
+
+            Spacer(minLength: 2)
+
             GeometryReader { geometry in
                 Capsule().fill(.white.opacity(0.18))
                     .overlay(alignment: .leading) {
@@ -453,10 +430,10 @@ private struct NoValuePlatformStat: View {
                             .frame(width: geometry.size.width * share)
                     }
             }
-            .frame(height: 4)
+            .frame(height: 3)
         }
-        .padding(.top, 10)
-        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.widget("%1$@, %2$@", activity.platform.title, activity.isConnected ? activity.playtimeLabel : L10n.widget("Not connected")))
     }
@@ -466,7 +443,7 @@ private struct NoValuePlatformStat: View {
     }
 
     @ViewBuilder
-    private var secondRow: some View {
+    private var detailRow: some View {
         if activity.isConnected {
             switch activity.platform {
             case .steam:
@@ -493,58 +470,34 @@ private struct NoValuePlatformStat: View {
         }
     }
 
-    @ViewBuilder
-    private var thirdRow: some View {
-        if activity.isConnected {
-            switch activity.platform {
-            case .steam:
-                if snapshot.platformProgress.steamTotal > 0 {
-                    HStack(spacing: 2.5) {
-                        Image(systemName: "rosette").font(.system(size: 7, weight: .semibold))
-                        Text("\(snapshot.platformProgress.steamEarned)").monospacedDigit()
+    private var progressBadge: some View {
+        Group {
+            if activity.isConnected {
+                switch activity.platform {
+                case .steam:
+                    if snapshot.platformProgress.steamTotal > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "rosette")
+                            Text(snapshot.platformProgress.steamEarned.formatted(.number.locale(L10n.locale)))
+                                .monospacedDigit()
+                        }
                     }
-                } else {
-                    placeholderText
-                }
-            case .playStation:
-                if snapshot.platformProgress.trophyDefined > 0 {
-                    HStack(spacing: 5) {
-                        TrophyTierGlyph(asset: "PlatinumTrophy", count: snapshot.platformProgress.trophyPlatinum)
-                        TrophyTierGlyph(asset: "GoldTrophy", count: snapshot.platformProgress.trophyGold)
-                        TrophyTierGlyph(asset: "SilverTrophy", count: snapshot.platformProgress.trophySilver)
-                        TrophyTierGlyph(asset: "BronzeTrophy", count: snapshot.platformProgress.trophyBronze)
+                case .playStation:
+                    if snapshot.platformProgress.trophyDefined > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "trophy.fill")
+                            Text(snapshot.platformProgress.trophyEarned.formatted(.number.locale(L10n.locale)))
+                                .monospacedDigit()
+                        }
                     }
-                } else {
-                    placeholderText
+                case .nintendo:
+                    EmptyView()
                 }
-            case .nintendo:
-                placeholderText
             }
-        } else {
-            placeholderText
         }
-    }
-
-    /// EmptyView would collapse the fixed-height slot entirely; a hidden
-    /// placeholder keeps the row so all platforms stay aligned.
-    private var placeholderText: some View {
-        Text(" ").opacity(0)
-    }
-}
-
-/// One PS trophy tier: the real console icon + count.
-private struct TrophyTierGlyph: View {
-    let asset: String
-    let count: Int
-
-    var body: some View {
-        HStack(spacing: 2) {
-            Image(asset)
-                .resizable()
-                .scaledToFit()
-                .frame(height: 10)
-            Text("\(count)").monospacedDigit()
-        }
+        .font(.system(size: 9, weight: .medium))
+        .foregroundStyle(.white.opacity(0.76))
+        .lineLimit(1)
     }
 }
 
@@ -560,24 +513,37 @@ private struct FortnightTotalPanel: View {
     var isAvailable = true
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "chart.bar.fill")
-                .font(.system(size: 22))
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 5) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 10, weight: .medium))
                 Text(L10n.widget("LAST 14 DAYS"))
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.78))
-                Text(isAvailable ? playedMinutes.hoursMinutesLabel : "—")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
+                    .font(.system(size: 9, weight: .semibold))
             }
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
+            .foregroundStyle(.white.opacity(0.80))
+            .frame(height: 21)
+
+            Text(isAvailable ? playedMinutes.hoursMinutesLabel : "—")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(height: 19, alignment: .leading)
+                .padding(.top, 3)
+
+            Text(verbatim: "Steam · Switch")
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.65))
+                .frame(height: 12, alignment: .leading)
+                .padding(.top, 2)
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isAvailable ? L10n.widget("Played %1$@ in 14 days", playedMinutes.hoursMinutesLabel) : L10n.widget("%1$@, %2$@", L10n.widget("LAST 14 DAYS"), L10n.widget("No play history")))
+        .accessibilityLabel(isAvailable ? L10n.widget("Played %1$@ in 14 days", playedMinutes.hoursMinutesLabel) + ", Steam · Switch" : L10n.widget("%1$@, %2$@", L10n.widget("LAST 14 DAYS"), L10n.widget("No play history")))
     }
 }
 
@@ -747,6 +713,23 @@ private struct EmptyGameCover: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+/// The A1 shelf shows cover art without cramped text overlays.
+private struct HeroRecentCover: View {
+    let game: RecentGame
+
+    var body: some View {
+        GeometryReader { geometry in
+            GameArtwork(name: game.artworkName, role: .cover, maxPixelSize: 240)
+                .scaledToFill()
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(game.title)
     }
 }
 

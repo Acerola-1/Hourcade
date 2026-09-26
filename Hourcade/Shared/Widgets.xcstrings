@@ -242,6 +242,23 @@
         }
       }
     },
+    "FEATURED GAME": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FEATURED GAME"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "焦点游戏"
+          }
+        }
+      }
+    },
     "Game Life": {
       "extractionState": "manual",
       "localizations": {
