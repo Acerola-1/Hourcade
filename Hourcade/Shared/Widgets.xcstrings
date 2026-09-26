@@ -156,23 +156,6 @@
         }
       }
     },
-    "All Time": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All Time"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全部时间"
-          }
-        }
-      }
-    },
     "By last played": {
       "extractionState": "manual",
       "localizations": {
@@ -425,6 +408,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "上次同步"
+          }
+        }
+      }
+    },
+    "Lv.%lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lv.%lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lv.%lld"
           }
         }
       }
@@ -684,6 +684,23 @@
         }
       }
     },
+    "Played %1$@ in 14 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Played %1$@ in 14 days"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "近 14 天游玩 %1$@"
+          }
+        }
+      }
+    },
     "Playing %1$@": {
       "extractionState": "manual",
       "localizations": {
@@ -851,23 +868,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "总游玩时间"
-          }
-        }
-      }
-    },
-    "Total Playtime · All Time": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total Playtime · All Time"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "总游玩时间 · 全部时间"
           }
         }
       }

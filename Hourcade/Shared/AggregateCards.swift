@@ -184,6 +184,17 @@ private struct HeroArtworkBackdrop: View {
                         .accessibilityHidden(true)
                 }
             }
+            HeroBackdropGrading()
+        }
+    }
+}
+
+/// Two-pass color grading applied over hero game artwork: a horizontal ink grade
+/// followed by a top/bottom darkening vignette. Shared across the main backdrop
+/// and the subtle shelf glass to keep the visual tone in lockstep.
+private struct HeroBackdropGrading: View {
+    var body: some View {
+        Group {
             LinearGradient(
                 colors: [WidgetPalette.ink.opacity(0.81), WidgetPalette.ink.opacity(0.18), WidgetPalette.ink.opacity(0.52)],
                 startPoint: .leading,
@@ -193,6 +204,8 @@ private struct HeroArtworkBackdrop: View {
         }
     }
 }
+
+private let heroNoValueCoordinateSpace = "HeroNoValueCard"
 
 private struct FrostedHeroTray: View {
     let featuredGame: FeaturedGame
@@ -235,6 +248,40 @@ private struct FrostedTrayDivider: View {
     }
 }
 
+private struct UltraSubtleShelfGlassBackdrop: View {
+    let featuredGame: FeaturedGame
+    let canvasSize: CGSize
+
+    var body: some View {
+        GeometryReader { proxy in
+            let frame = proxy.frame(in: .named(heroNoValueCoordinateSpace))
+            ZStack(alignment: .topLeading) {
+                if !featuredGame.artworkName.isEmpty, canvasSize.width > 0, canvasSize.height > 0 {
+                    ZStack {
+                        GameArtwork(name: featuredGame.artworkName, role: .hero, maxPixelSize: 360)
+                            .scaledToFill()
+                            .frame(width: canvasSize.width, height: canvasSize.height)
+                            .clipped()
+                        HeroBackdropGrading()
+                    }
+                    .frame(width: canvasSize.width, height: canvasSize.height)
+                    .offset(x: -frame.minX, y: -frame.minY)
+                    .blur(radius: 10)
+                    .accessibilityHidden(true)
+                }
+                WidgetPalette.ink.opacity(0.24)
+                Color.black.opacity(0.12)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.6)
+            )
+        }
+    }
+}
+
 private struct CompactFeaturedGameSummary: View {
     let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
@@ -272,7 +319,7 @@ private struct HeroNoValueCard: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let metricWidth = max(0, geometry.size.width - 18 * 2 - 225 - 26)
+            let metricWidth = max(0, geometry.size.width - 18 * 2 - 228 - 26)
             ZStack {
                 HeroArtworkBackdrop(featuredGame: featuredGame, size: geometry.size)
 
@@ -326,7 +373,9 @@ private struct HeroNoValueCard: View {
                             }
                             .frame(height: 55)
                         }
-                        .frame(width: 225, height: max(0, geometry.size.height - 18 * 2 - 82 - 76), alignment: .bottom)
+                        .padding(10)
+                        .frame(width: 228, height: max(0, geometry.size.height - 18 * 2 - 82 - 76), alignment: .bottom)
+                        .background(UltraSubtleShelfGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size))
                     }
 
                     Spacer(minLength: 12)
@@ -346,15 +395,21 @@ private struct HeroNoValueCard: View {
                 .foregroundStyle(.white)
                 .padding(18)
             }
+            .coordinateSpace(name: heroNoValueCoordinateSpace)
         }
         .environment(\.colorScheme, .dark)
     }
 }
 
-/// One tray cell per platform, three fixed rows so all platforms align:
-/// playtime / games + level / achievements or trophy tiers. The share bar
-/// carries the percentage, so no percent text. Empty rows keep their slot so
-/// platforms with fewer stats still line up.
+/// One tray cell per platform, structured into three fixed-height rows so all
+/// platforms align across the card:
+/// - Row 1 (17pt): lifetime playtime
+/// - Row 2 (12pt): game count and account/trophy level
+/// - Row 3 (12pt): badges (Steam achievements, PSN 4-tier trophies, or hidden placeholder)
+///
+/// The bottom capsule bar visualizes the platform's playtime share, avoiding redundant
+/// percentage text. Missing or empty rows render a hidden placeholder (`Text(" ").opacity(0)`)
+/// to prevent `EmptyView` from collapsing the slot.
 private struct NoValuePlatformStat: View {
     let activity: PlatformActivity
     let totalPlayedMinutes: Int
@@ -448,6 +503,8 @@ private struct NoValuePlatformStat: View {
                         Image(systemName: "rosette").font(.system(size: 7, weight: .semibold))
                         Text("\(snapshot.platformProgress.steamEarned)").monospacedDigit()
                     }
+                } else {
+                    placeholderText
                 }
             case .playStation:
                 if snapshot.platformProgress.trophyDefined > 0 {
@@ -457,6 +514,8 @@ private struct NoValuePlatformStat: View {
                         TrophyTierGlyph(asset: "SilverTrophy", count: snapshot.platformProgress.trophySilver)
                         TrophyTierGlyph(asset: "BronzeTrophy", count: snapshot.platformProgress.trophyBronze)
                     }
+                } else {
+                    placeholderText
                 }
             case .nintendo:
                 placeholderText

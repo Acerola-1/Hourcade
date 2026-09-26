@@ -162,8 +162,10 @@ final class SyncCoordinator {
             snapshots.progress.trophiesByTitle = totals.byTitle
             // The A1 tray shows the account-level four tiers, which the sync
             // already rolled up per tier; the per-title cache only has totals.
+            // Platinum switches from the per-title cache sum to the account-level
+            // rollup, matching gold/silver/bronze (defaults to 0 if rollup is nil).
             let tiers = psn.library.trophies?.earned
-            snapshots.progress.trophyPlatinum = tiers?.platinum ?? snapshots.progress.trophyPlatinum
+            snapshots.progress.trophyPlatinum = tiers?.platinum ?? 0
             snapshots.progress.trophyGold = tiers?.gold ?? 0
             snapshots.progress.trophySilver = tiers?.silver ?? 0
             snapshots.progress.trophyBronze = tiers?.bronze ?? 0
