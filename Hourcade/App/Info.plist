@@ -4,5 +4,7 @@
 <dict>
     <key>HourcadeAppGroup</key>
     <string>$(DEVELOPMENT_TEAM).dev.acerola.Hourcade</string>
+    <key>LSUIElement</key>
+    <true/>
 </dict>
 </plist>

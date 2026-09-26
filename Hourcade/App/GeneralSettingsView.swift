@@ -1,5 +1,24 @@
 import SwiftUI
 import WidgetKit
+import ServiceManagement
+
+/// Login-item registration for silent launch-and-stay-in-menu-bar operation.
+/// Must be toggled by a user action (System Settings shows the entry either way).
+enum LaunchAtLogin {
+    @MainActor
+    static var isEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    @MainActor
+    static func setEnabled(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    }
+}
 
 /// Cover art cached in the App Group for the overview and the widgets. Every
 /// file in the directory is re-downloadable, so deleting it is always safe.
@@ -55,10 +74,35 @@ struct GeneralSettingsView: View {
     @State private var cacheBytes: Int64?
     @State private var cacheFiles = 0
     @State private var isClearing = false
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var launchAtLoginError: String?
 
     var body: some View {
         let _ = locale
         PageShell(title: L10n.tr("常规设置"), eyebrow: L10n.tr("偏好设置"), subtitle: L10n.tr("这些选项同时应用于 Hourcade 和桌面小组件。")) {
+            SettingsPanel(title: L10n.tr("登录时启动")) {
+                Toggle(isOn: $launchAtLogin) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L10n.tr("开机后在菜单栏静默运行"))
+                            .font(.subheadline.weight(.medium))
+                        Text(L10n.tr("Hourcade 驻留菜单栏并定时同步组件数据，不占用 Dock；随时可从菜单栏退出。"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .onChange(of: launchAtLogin) { _, enabled in
+                    do {
+                        try LaunchAtLogin.setEnabled(enabled)
+                        launchAtLoginError = nil
+                    } catch {
+                        launchAtLogin = LaunchAtLogin.isEnabled
+                        launchAtLoginError = error.localizedDescription
+                    }
+                }
+                if let launchAtLoginError {
+                    Label(launchAtLoginError, systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+            }
             SettingsPanel(title: L10n.tr("语言")) {
                 Picker(L10n.tr("语言"), selection: $language) {
                     Text(L10n.tr("跟随系统")).tag(AppLanguage.system)

@@ -171,6 +171,23 @@
         }
       }
     },
+    "Hourcade 驻留菜单栏并定时同步组件数据，不占用 Dock；随时可从菜单栏退出。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hourcade stays in the menu bar and refreshes widget data on a schedule; it never appears in the Dock. Quit anytime from the menu bar."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hourcade 驻留菜单栏并定时同步组件数据，不占用 Dock；随时可从菜单栏退出。"
+          }
+        }
+      }
+    },
     "Lv.%lld": {
       "extractionState": "manual",
       "localizations": {
@@ -1191,6 +1208,23 @@
         }
       }
     },
+    "开机后在菜单栏静默运行": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run silently in the menu bar after login"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开机后在菜单栏静默运行"
+          }
+        }
+      }
+    },
     "总时长": {
       "extractionState": "manual",
       "localizations": {
@@ -1272,6 +1306,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开 Steam 官方密钥页面 ↗"
+          }
+        }
+      }
+    },
+    "打开主界面": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Hourcade"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开主界面"
           }
         }
       }
@@ -1718,6 +1769,23 @@
         }
       }
     },
+    "登录时启动": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Launch at Login"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录时启动"
+          }
+        }
+      }
+    },
     "登录窗口由系统打开，Hourcade 不接收你的密码。此连接仍在测试，服务变更可能导致失败。": {
       "extractionState": "manual",
       "localizations": {
@@ -2156,6 +2224,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接账号"
+          }
+        }
+      }
+    },
+    "退出 Hourcade": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit Hourcade"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出 Hourcade"
           }
         }
       }
