@@ -1,19 +1,36 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "%1$@ games  ·  %2$d platforms": {
+    "%1$@ games": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ games  ·  %2$d platforms"
+            "value": "%1$@ games"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ 款游戏  ·  %2$d 个平台"
+            "value": "%1$@ 款游戏"
+          }
+        }
+      }
+    },
+    "%1$@ in 14 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ in the last 14 days"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@"
           }
         }
       }
@@ -65,23 +82,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$d%%"
-          }
-        }
-      }
-    },
-    "%1$d%% of playtime": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$d%% of playtime"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "占游玩时间 %1$d%%"
           }
         }
       }
@@ -680,23 +680,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "累计游玩 %1$@"
-          }
-        }
-      }
-    },
-    "Played %1$@ in 14 days": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Played %1$@ in 14 days"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "近 14 天游玩 %1$@"
           }
         }
       }

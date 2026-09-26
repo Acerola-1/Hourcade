@@ -214,6 +214,11 @@ struct PlatformProgress: Codable, Sendable {
     var trophyEarned: Int = 0
     var trophyDefined: Int = 0
     var trophyPlatinum: Int = 0
+    // Account-level trophy tiers for the A1 tray; zero on snapshots saved
+    // before these fields shipped (one re-sync fills them).
+    var trophyGold: Int = 0
+    var trophySilver: Int = 0
+    var trophyBronze: Int = 0
     var achievementsByGame: [String: [Int]] = [:]  // appid -> [earned, total]
     var trophiesByTitle: [String: [Int]] = [:]     // titleId -> [earned, defined]
 
@@ -250,6 +255,11 @@ struct GameSnapshot: Sendable {
     // Steam live presence captured at sync time (nil = unknown/offline data).
     var steamPersonaState: Int? = nil
     var steamPlayingGame: String? = nil
+    // Steam account level for the A1 tray; nil on snapshots saved before this
+    // field shipped (one re-sync fills it).
+    var steamLevel: Int? = nil
+    // PSN trophy level for the A1 tray, same shipping caveat as steamLevel.
+    var psnTrophyLevel: Int? = nil
     // One "last played" row per connected platform, most recent first, prepared
     // app-side for the A2 card's activity panel. Row date is nil when unknown.
     var lastPlayedRows: [LastPlayedRow] = []

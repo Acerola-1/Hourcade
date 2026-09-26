@@ -159,8 +159,14 @@ final class SyncCoordinator {
             let totals = await PSNTrophyStore.shared.cachedSnapshotProgress(titleIds: titleIds)
             snapshots.progress.trophyEarned = totals.earned
             snapshots.progress.trophyDefined = totals.defined
-            snapshots.progress.trophyPlatinum = totals.platinum
             snapshots.progress.trophiesByTitle = totals.byTitle
+            // The A1 tray shows the account-level four tiers, which the sync
+            // already rolled up per tier; the per-title cache only has totals.
+            let tiers = psn.library.trophies?.earned
+            snapshots.progress.trophyPlatinum = tiers?.platinum ?? snapshots.progress.trophyPlatinum
+            snapshots.progress.trophyGold = tiers?.gold ?? 0
+            snapshots.progress.trophySilver = tiers?.silver ?? 0
+            snapshots.progress.trophyBronze = tiers?.bronze ?? 0
         }
         try WidgetSnapshotStore.save(snapshots)
         reloadWidgets()

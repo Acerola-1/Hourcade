@@ -235,49 +235,43 @@ private struct FrostedTrayDivider: View {
     }
 }
 
-private struct FeaturedGameSummary: View {
+private struct CompactFeaturedGameSummary: View {
     let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
 
-    private var hasRecentPlay: Bool { snapshot.fortnightPlayedMinutes > 0 }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(L10n.widget(hasRecentPlay ? "FROM YOUR LAST 14 DAYS" : "MOST PLAYED · ALL TIME"))
-                .font(.system(size: 10, weight: .medium))
+        VStack(alignment: .leading, spacing: 5) {
+            Text(L10n.widget(snapshot.fortnightPlayedMinutes > 0 ? "FROM YOUR LAST 14 DAYS" : "MOST PLAYED · ALL TIME"))
+                .font(.system(size: 9, weight: .medium))
                 .tracking(0.4)
-                .foregroundStyle(.white.opacity(0.76))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .foregroundStyle(.white.opacity(0.72))
             Text(featuredGame.id == "empty" ? L10n.widget("No play history") : featuredGame.title)
-                .font(.system(size: 20, weight: .semibold))
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-            HStack(spacing: 8) {
-                PlatformBrandLogo(platform: featuredGame.platform, size: 31)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(featuredGame.platform.title)
-                        .font(.system(size: 11, weight: .medium))
-                    Text(featuredGame.id == "empty" ? L10n.widget("Connect a platform or sync play history") : (hasRecentPlay ? L10n.widget("Played %1$@ in 14 days", featuredGame.fortnightMinutes.hoursMinutesLabel) : L10n.widget("Played %1$@ all time", featuredGame.lifetimeMinutes.hoursLabel)))
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.78))
-                }
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .font(.system(size: 17, weight: .semibold))
+            HStack(spacing: 6) {
+                PlatformBrandLogo(platform: featuredGame.platform, size: 23)
+                // The caption above ("FROM YOUR LAST 14 DAYS") already names
+                // the period; this line carries only the duration itself.
+                Text(featuredGame.id == "empty"
+                     ? L10n.widget("Connect a platform or sync play history")
+                     : L10n.widget(snapshot.fortnightPlayedMinutes > 0 ? "%1$@ in 14 days" : "Played %1$@ all time",
+                                   snapshot.fortnightPlayedMinutes > 0 ? featuredGame.fortnightMinutes.hoursMinutesLabel : featuredGame.lifetimeMinutes.hoursLabel))
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.78))
             }
         }
-        .frame(width: 225, alignment: .leading)
+        .lineLimit(1)
         .accessibilityElement(children: .combine)
     }
 }
 
+/// A1: the open hero composition, with a compact recent-games shelf beside
+/// the featured game. The full platform and fortnight tray stays intact.
 private struct HeroNoValueCard: View {
     let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
 
     var body: some View {
         GeometryReader { geometry in
-            // Same two-column layout as A2, with the metric column given a real width in WidgetKit.
             let metricWidth = max(0, geometry.size.width - 18 * 2 - 225 - 26)
             ZStack {
                 HeroArtworkBackdrop(featuredGame: featuredGame, size: geometry.size)
@@ -297,11 +291,11 @@ private struct HeroNoValueCard: View {
                         SyncStatus(updatedAt: snapshot.hasData ? snapshot.updatedAt : nil)
                     }
 
-                    Spacer(minLength: 20)
+                    Spacer(minLength: 12)
 
                     HStack(alignment: .bottom, spacing: 26) {
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(L10n.widget("Total Playtime · All Time"))
+                            Text(L10n.widget("Total Playtime"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(.white.opacity(0.78))
                                 .lineLimit(1)
@@ -311,21 +305,35 @@ private struct HeroNoValueCard: View {
                                 .monospacedDigit()
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
-                            Text(L10n.widget("%1$@ games  ·  %2$d platforms", snapshot.hasData ? snapshot.totalGameCount.formatted(.number.locale(L10n.locale)) : "—", snapshot.connectedPlatformCount))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.82))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.65)
                         }
                         .frame(width: metricWidth, alignment: .leading)
-                        FeaturedGameSummary(snapshot: snapshot, featuredGame: featuredGame)
+                        VStack(alignment: .leading, spacing: 8) {
+                            CompactFeaturedGameSummary(snapshot: snapshot, featuredGame: featuredGame)
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+
+                            Text(L10n.widget("Recently Played"))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.80))
+
+                            HStack(spacing: 6) {
+                                ForEach(0..<3, id: \.self) { index in
+                                    if index < snapshot.recentGames.count {
+                                        SmallCover(game: snapshot.recentGames[index])
+                                    } else {
+                                        EmptyGameCover()
+                                    }
+                                }
+                            }
+                            .frame(height: 55)
+                        }
+                        .frame(width: 225, height: max(0, geometry.size.height - 18 * 2 - 82 - 76), alignment: .bottom)
                     }
 
-                    Spacer(minLength: 19)
+                    Spacer(minLength: 12)
 
                     HStack(spacing: 0) {
                         ForEach(snapshot.platforms) { activity in
-                            NoValuePlatformStat(activity: activity, totalPlayedMinutes: snapshot.totalPlayedMinutes)
+                            NoValuePlatformStat(activity: activity, totalPlayedMinutes: snapshot.totalPlayedMinutes, snapshot: snapshot)
                                 .frame(maxWidth: .infinity)
                             FrostedTrayDivider()
                         }
@@ -343,29 +351,43 @@ private struct HeroNoValueCard: View {
     }
 }
 
+/// One tray cell per platform, three fixed rows so all platforms align:
+/// playtime / games + level / achievements or trophy tiers. The share bar
+/// carries the percentage, so no percent text. Empty rows keep their slot so
+/// platforms with fewer stats still line up.
 private struct NoValuePlatformStat: View {
     let activity: PlatformActivity
     let totalPlayedMinutes: Int
+    let snapshot: GameSnapshot
 
     private var share: Double {
         Double(activity.playedMinutes) / Double(max(totalPlayedMinutes, 1))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 9) {
-                PlatformBrandLogo(platform: activity.platform, size: 36)
-                VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 9) {
+                PlatformBrandLogo(platform: activity.platform, size: 32)
+                    .padding(.top, -2)
+                VStack(alignment: .leading, spacing: 0) {
                     Text(activity.playtimeLabel)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
-                    Text(activity.isConnected ? L10n.widget("%1$d%% of playtime", Int((share * 100).rounded())) : L10n.widget("Not connected"))
-                        .font(.system(size: 9))
+                        .frame(height: 17, alignment: .center)
+                    secondRow
+                        .font(.system(size: 8.5))
                         .foregroundStyle(.white.opacity(0.77))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        .frame(height: 12, alignment: .center)
+                    thirdRow
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(.white.opacity(0.77))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(height: 12, alignment: .center)
                 }
             }
             GeometryReader { geometry in
@@ -378,9 +400,99 @@ private struct NoValuePlatformStat: View {
             }
             .frame(height: 4)
         }
+        .padding(.top, 10)
         .padding(.horizontal, 11)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L10n.widget("%1$@, %2$@", activity.platform.title, activity.isConnected ? activity.playtimeLabel : L10n.widget("Not connected")))
+    }
+
+    private var gameCountText: Text {
+        Text(L10n.widget("%1$@ games", activity.gameCount.formatted(.number.locale(L10n.locale))))
+    }
+
+    @ViewBuilder
+    private var secondRow: some View {
+        if activity.isConnected {
+            switch activity.platform {
+            case .steam:
+                HStack(spacing: 4) {
+                    gameCountText
+                    if let level = snapshot.steamLevel {
+                        FrostedDot()
+                        Text(L10n.widget("Lv.%lld", level))
+                    }
+                }
+            case .nintendo:
+                gameCountText
+            case .playStation:
+                HStack(spacing: 4) {
+                    gameCountText
+                    if let level = snapshot.psnTrophyLevel {
+                        FrostedDot()
+                        Text(L10n.widget("Lv.%lld", level))
+                    }
+                }
+            }
+        } else {
+            Text(L10n.widget("Not connected"))
+        }
+    }
+
+    @ViewBuilder
+    private var thirdRow: some View {
+        if activity.isConnected {
+            switch activity.platform {
+            case .steam:
+                if snapshot.platformProgress.steamTotal > 0 {
+                    HStack(spacing: 2.5) {
+                        Image(systemName: "rosette").font(.system(size: 7, weight: .semibold))
+                        Text("\(snapshot.platformProgress.steamEarned)").monospacedDigit()
+                    }
+                }
+            case .playStation:
+                if snapshot.platformProgress.trophyDefined > 0 {
+                    HStack(spacing: 5) {
+                        TrophyTierGlyph(asset: "PlatinumTrophy", count: snapshot.platformProgress.trophyPlatinum)
+                        TrophyTierGlyph(asset: "GoldTrophy", count: snapshot.platformProgress.trophyGold)
+                        TrophyTierGlyph(asset: "SilverTrophy", count: snapshot.platformProgress.trophySilver)
+                        TrophyTierGlyph(asset: "BronzeTrophy", count: snapshot.platformProgress.trophyBronze)
+                    }
+                }
+            case .nintendo:
+                placeholderText
+            }
+        } else {
+            placeholderText
+        }
+    }
+
+    /// EmptyView would collapse the fixed-height slot entirely; a hidden
+    /// placeholder keeps the row so all platforms stay aligned.
+    private var placeholderText: some View {
+        Text(" ").opacity(0)
+    }
+}
+
+/// One PS trophy tier: the real console icon + count.
+private struct TrophyTierGlyph: View {
+    let asset: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(asset)
+                .resizable()
+                .scaledToFit()
+                .frame(height: 10)
+            Text("\(count)").monospacedDigit()
+        }
+    }
+}
+
+/// A small separator dot inside tray detail lines.
+private struct FrostedDot: View {
+    var body: some View {
+        Circle().fill(.white.opacity(0.45)).frame(width: 2.5, height: 2.5)
     }
 }
 

@@ -312,6 +312,8 @@ struct WidgetSnapshots: Codable, Sendable {
             platformProgress: progress,
             steamPersonaState: steam?.library.player?.personaState,
             steamPlayingGame: steam?.library.player?.playingGame,
+            steamLevel: steam?.library.player?.level,
+            psnTrophyLevel: playStation?.library.trophies?.level,
             lastPlayedRows: lastPlayed
         )
     }
