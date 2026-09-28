@@ -8,6 +8,8 @@ struct HourcadeApp: App {
     @AppStorage(L10n.themeKey, store: L10n.defaults) private var theme: AppTheme = .system
 
     init() {
+        // 启动 Sparkle：startingUpdater 已开启，这里只需让单例活起来。
+        _ = UpdateService.shared
         Task { @MainActor in BackgroundSyncScheduler.runLaunchSequenceOnce() }
     }
 

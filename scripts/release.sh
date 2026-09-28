@@ -25,7 +25,7 @@ usage() {
 前置条件:
   - gh CLI 已安装并登录 (gh auth login)
   - 仓库已配置发布用 Secrets（APPLE_ID / APPLE_APP_PASSWORD / APPLE_TEAM_ID /
-    MACOS_CERT_P12 / MACOS_CERT_PASSWORD）
+    MACOS_CERT_P12 / MACOS_CERT_PASSWORD / SPARKLE_PRIVATE_KEY）
   - 工作区干净（仅允许版本号和发布说明变更）
 
 流程:
@@ -109,7 +109,7 @@ GITHUB_REPOSITORY=$(git config --get remote.origin.url | sed -E 's#(git@github.c
 # 发布依赖仓库 Secrets。缺失时 Actions 会在归档后（跑满几分钟）才失败，
 # 这里提前拦截，把"要配什么"直接打出来。
 check_secrets() {
-  local required=(APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID MACOS_CERT_P12 MACOS_CERT_PASSWORD)
+  local required=(APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID MACOS_CERT_P12 MACOS_CERT_PASSWORD SPARKLE_PRIVATE_KEY)
   local existing missing=()
 
   if ! existing=$(gh secret list --repo "$GITHUB_REPOSITORY" 2>/dev/null); then

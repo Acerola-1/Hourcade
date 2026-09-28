@@ -89,6 +89,45 @@ jobs:
             exit 1
           fi
 
+      - name: Re-sign Sparkle nested components
+        run: |
+          # Sparkle 的二进制 XCFramework 内含 ad-hoc 签名的嵌套可执行文件。
+          # Xcode 仅重签 framework 根目录，公证会拒绝残留的 ad-hoc 签名；必须由叶到根重签。
+          APP_PATH="build/Hourcade.xcarchive/Products/Applications/Hourcade.app"
+          SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/Current"
+          SIGNING_IDENTITY="Developer ID Application"
+
+          sign_component() {
+            codesign --force --sign "$SIGNING_IDENTITY" \
+              --timestamp --options runtime \
+              --preserve-metadata=identifier,entitlements,flags \
+              "$1"
+          }
+
+          sign_component "$SPARKLE_FRAMEWORK/Autoupdate"
+          sign_component "$SPARKLE_FRAMEWORK/XPCServices/Downloader.xpc"
+          sign_component "$SPARKLE_FRAMEWORK/XPCServices/Installer.xpc"
+          sign_component "$SPARKLE_FRAMEWORK/Updater.app"
+          sign_component "$SPARKLE_FRAMEWORK"
+          sign_component "$APP_PATH"
+
+          # `--deep` 的成功只说明封装完整，不会发现 ad-hoc 签名；逐项确认公证要求。
+          for component in \
+            "$SPARKLE_FRAMEWORK/Autoupdate" \
+            "$SPARKLE_FRAMEWORK/XPCServices/Downloader.xpc" \
+            "$SPARKLE_FRAMEWORK/XPCServices/Installer.xpc" \
+            "$SPARKLE_FRAMEWORK/Updater.app" \
+            "$SPARKLE_FRAMEWORK" \
+            "$APP_PATH"; do
+            echo "--- $component ---"
+            SIGNING_INFO="$(codesign -dvvv "$component" 2>&1)"
+            echo "$SIGNING_INFO"
+            echo "$SIGNING_INFO" | grep -q "Authority=Developer ID Application"
+            echo "$SIGNING_INFO" | grep -q "TeamIdentifier=$APPLE_TEAM_ID"
+            echo "$SIGNING_INFO" | grep -Eq "Timestamp=|Signed Time="
+            echo "$SIGNING_INFO" | grep -q "runtime"
+          done
+
       - name: Verify nested component signatures
         run: |
           # 主应用与组件扩展都必须由 Developer ID 签名、启用 Hardened Runtime、带时间戳。
@@ -199,6 +238,67 @@ jobs:
           /usr/sbin/spctl -a -vvv -t exec "$MOUNT_POINT/Hourcade.app"
           hdiutil detach "$MOUNT_POINT" >/dev/null
 
+      - name: Package Sparkle update ZIP
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # Sparkle 自更新使用 ZIP(比 DMG 更稳:直接解压替换 .app)。
+          # 复用已公证并 staple 过的 .app,zip 内保留顶层 .app 目录。
+          APP_PATH="build/Hourcade.xcarchive/Products/Applications/Hourcade.app"
+          mkdir -p build/appcast
+          ditto -c -k --keepParent "$APP_PATH" "build/appcast/Hourcade-${RELEASE_TAG}.zip"
+
+      - name: Sign update & generate appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # 定位 Sparkle 工具链(sign_update / generate_appcast)——由 SPM 解析到 DerivedData。
+          DERIVED="$HOME/Library/Developer/Xcode/DerivedData"
+          SPARKLE_BIN="$(find "$DERIVED" -type d -path '*/SourcePackages/artifacts/sparkle/Sparkle/bin' 2>/dev/null | head -1)"
+          if [ -z "$SPARKLE_BIN" ]; then
+            echo "::error::找不到 Sparkle 工具目录(sign_update/generate_appcast)"
+            exit 1
+          fi
+          echo "Sparkle tools: $SPARKLE_BIN"
+
+          # 私钥从 Secret 注入(EdDSA)。generate_appcast 会读取 build/appcast 下的 ZIP,
+          # 用私钥签名并产出 appcast.xml,更新日志取自各版本的 release notes。
+          echo "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_ed_private_key"
+
+          # 把本次发布说明转为 HTML 供 Sparkle 内嵌为更新日志。
+          # generate_appcast 通过与 ZIP 同名的 .html 文件关联 release notes,
+          # 不支持 .md;需用 markdown 转换工具将 Markdown 转 HTML。
+          if [ -f RELEASE_NOTES.md ]; then
+            HTML_FILE="build/appcast/Hourcade-${RELEASE_TAG}.html"
+            if command -v pandoc &>/dev/null; then
+              pandoc -f markdown -t html --standalone "RELEASE_NOTES.md" -o "$HTML_FILE" || true
+              # 注入内联样式,让 Sparkle 更新弹窗显示更美观。
+              sed -i '' 's|<head>|<head><style>body{font-family:-apple-system,sans-serif;font-size:13px;line-height:1.5;padding:8px;color:#333}h2{font-size:15px;margin:0 0 8px}h3{font-size:13px;margin:8px 0 4px}ul{margin:2px 0;padding-left:20px}li{margin:2px 0}</style>|' "$HTML_FILE" || true
+            else
+              # pandoc 不可用时,将 Markdown 原文包裹在简单 HTML 里作兜底。
+              {
+                printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,sans-serif;font-size:13px;line-height:1.5;padding:8px;}pre{white-space:pre-wrap;}</style></head><body><pre>'
+                cat RELEASE_NOTES.md
+                printf '%s\n' '</pre></body></html>'
+              } > "$HTML_FILE"
+            fi
+          fi
+
+          # 下载地址前缀:指向本次 GitHub Release 的资产。
+          DL_PREFIX="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+
+          "$SPARKLE_BIN/generate_appcast" \
+            --ed-key-file "$RUNNER_TEMP/sparkle_ed_private_key" \
+            --download-url-prefix "$DL_PREFIX/" \
+            --embed-release-notes \
+            build/appcast
+
+          rm -f "$RUNNER_TEMP/sparkle_ed_private_key"
+
+          echo "--- appcast.xml ---"
+          cat build/appcast/appcast.xml
+
       # 第三方 action 固定到 commit SHA:可变 tag 被劫持时能以 write 权限
       # 偷取 APPLE_ID 等敏感 env 或篡改 Release 产物。
       - name: Create Release & Upload
@@ -206,6 +306,7 @@ jobs:
         with:
           files: |
             build/Hourcade.dmg
+            build/appcast/Hourcade-${{ github.ref_name }}.zip
           body_path: RELEASE_NOTES.md
           generate_release_notes: true
         env:
@@ -216,3 +317,16 @@ jobs:
       - name: Cleanup keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+
+      # 把 appcast.xml 发布到 GitHub Pages,供 App 内的 SUFeedURL 拉取。
+      - name: Deploy appcast to GitHub Pages
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: build/appcast
+          publish_branch: gh-pages
+          keep_files: true
+          # 仅排除 generate_appcast 产出的版本更新日志文件(Hourcade-v*.html)。
+          # 注意：exclude_assets 会把匹配项从 keep_files 的保留列表中剔除，
+          # 若写成 *.html 会连网站入口 index.html 一并删除，导致根路径 404。
+          exclude_assets: '*.zip,*.md,Hourcade-*.html'

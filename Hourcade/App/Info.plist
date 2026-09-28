@@ -6,5 +6,9 @@
     <string>$(DEVELOPMENT_TEAM).dev.acerola.Hourcade</string>
     <key>LSUIElement</key>
     <true/>
+    <key>SUFeedURL</key>
+    <string>https://acerola-1.github.io/Hourcade/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>fHL1MyFa8DDLwsRN84Nc2tTCsg/F0o/rVWZthczL+jA=</string>
 </dict>
 </plist>

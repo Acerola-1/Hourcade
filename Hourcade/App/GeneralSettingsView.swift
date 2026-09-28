@@ -71,6 +71,7 @@ struct GeneralSettingsView: View {
     @Environment(\.locale) private var locale
     @AppStorage(L10n.languageKey, store: L10n.defaults) private var language: AppLanguage = .system
     @AppStorage(L10n.themeKey, store: L10n.defaults) private var theme: AppTheme = .system
+    @ObservedObject private var updater = UpdateService.shared
     @State private var cacheBytes: Int64?
     @State private var cacheFiles = 0
     @State private var isClearing = false
@@ -124,6 +125,21 @@ struct GeneralSettingsView: View {
                 .labelsHidden()
                 Text(L10n.tr("主题只影响 Hourcade 窗口；桌面小组件跟随系统外观。"))
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            SettingsPanel(title: L10n.tr("更新")) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.format("当前版本 %@", UpdateService.appVersion))
+                            .font(.subheadline.weight(.medium))
+                        Text(L10n.tr("有新版本时，Hourcade 会从 GitHub 下载并校验签名后安装。"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(L10n.tr("检查更新")) {
+                        updater.checkForUpdates()
+                    }
+                    .disabled(!updater.canCheckForUpdates)
+                }
             }
             SettingsPanel(title: L10n.tr("缓存")) {
                 HStack {
