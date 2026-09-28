@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1254 1254">
+  <defs>
+    <clipPath id="clockTop"><path d="M0 0h1254v700H0z"/></clipPath>
+    <linearGradient id="rim" x1="255" y1="300" x2="1010" y2="744" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#167ff3"/>
+      <stop offset=".44" stop-color="#55b4f6"/>
+      <stop offset=".69" stop-color="#ffd87a"/>
+      <stop offset="1" stop-color="#ffd595"/>
+    </linearGradient>
+    <radialGradient id="dial" cx=".52" cy=".39" r=".71">
+      <stop stop-color="#fffefa"/>
+      <stop offset=".75" stop-color="#fffaf3"/>
+      <stop offset="1" stop-color="#f0e9df"/>
+    </radialGradient>
+    <linearGradient id="blueHand" x1="507" y1="395" x2="643" y2="545" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#147af5"/>
+      <stop offset="1" stop-color="#0643ba"/>
+    </linearGradient>
+    <linearGradient id="warmHand" x1="620" y1="532" x2="800" y2="344" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff9e52"/>
+      <stop offset="1" stop-color="#ffdc80"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#clockTop)">
+  <circle cx="625" cy="565" r="382" fill="none" stroke="url(#rim)" stroke-width="70"/>
+  <circle cx="625" cy="565" r="349" fill="url(#dial)"/>
+  <g fill="none" stroke="#247ff2" stroke-width="28" stroke-linecap="round">
+    <path d="M625 265v38"/>
+    <path d="m354 431 32 22"/>
+    <path d="m897 431-32 22"/>
+  </g>
+  <path d="M625 514 522 409" fill="none" stroke="url(#blueHand)" stroke-width="51" stroke-linecap="round"/>
+  <path d="M625 514 790 354" fill="none" stroke="url(#warmHand)" stroke-width="50" stroke-linecap="round"/>
+  <circle cx="625" cy="514" r="39" fill="#0c4bc4"/>
+  </g>
+</svg>

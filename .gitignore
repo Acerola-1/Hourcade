@@ -4,4 +4,6 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
-
+.zcode/
+*.dmg
+dmg-temp/

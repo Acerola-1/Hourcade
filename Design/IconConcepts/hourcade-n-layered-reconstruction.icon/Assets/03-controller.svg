@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1254 1254">
+  <defs>
+    <path id="shellPath" d="M412 548c-71-2-124 41-160 106-48 87-86 206-85 294 1 66 34 101 96 100 77-1 135-79 209-117 38-19 87-23 153-23 68 0 119 4 158 23 76 39 132 117 206 117 61 0 94-36 88-104-8-103-40-226-82-306-34-65-90-95-153-90-81 6-116 53-217 53-101 0-133-50-213-53z"/>
+    <clipPath id="shellClip"><use href="#shellPath"/></clipPath>
+    <linearGradient id="shell" x1="630" y1="555" x2="880" y2="1050" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fffdf7"/>
+      <stop offset=".46" stop-color="#fbfaf5"/>
+      <stop offset=".78" stop-color="#eaf2fb"/>
+      <stop offset="1" stop-color="#d7e7fa"/>
+    </linearGradient>
+    <linearGradient id="blueLower" x1="270" y1="686" x2="540" y2="1040" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2a94fa"/>
+      <stop offset=".56" stop-color="#075bde"/>
+      <stop offset="1" stop-color="#064ee4"/>
+    </linearGradient>
+    <linearGradient id="coolSheen" x1="265" y1="561" x2="616" y2="926" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#70c5f6"/>
+      <stop offset="1" stop-color="#62b5f2" stop-opacity=".1"/>
+    </linearGradient>
+  </defs>
+  <use href="#shellPath" fill="url(#shell)" stroke="#c2ddf8" stroke-width="9" stroke-linejoin="round"/>
+  <g clip-path="url(#shellClip)">
+    <path d="M155 707C220 610 331 545 414 547c62 1 78 25 125 77 46 50 89 94 133 154 39 54 61 100 72 155-124-31-203-22-280 26-99 65-162 121-253 106-67-13-88-133-56-358z" fill="url(#blueLower)"/>
+    <path d="M263 638c67-83 155-112 225-75 70 37 102 102 166 165 50 50 85 112 93 208-58-71-127-123-205-187-106-87-171-122-279-111z" fill="url(#coolSheen)" opacity=".58"/>
+    <path d="M566 578c36 21 75 28 119 24 87-8 105-57 163-55 70 1 119 50 151 113 13 27 25 57 37 91-89-132-184-155-268-111-83 43-145 48-202-62z" fill="#fffdf8" opacity=".54"/>
+  </g>
+</svg>

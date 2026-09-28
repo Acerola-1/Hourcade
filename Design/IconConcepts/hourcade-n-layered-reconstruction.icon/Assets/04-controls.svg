@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1254 1254">
+  <defs>
+    <linearGradient id="pad" x1="335" y1="691" x2="488" y2="867" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1767e4"/>
+      <stop offset="1" stop-color="#073cba"/>
+    </linearGradient>
+    <linearGradient id="buttons" x1="780" y1="693" x2="902" y2="865" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2198fa"/>
+      <stop offset="1" stop-color="#0b63e9"/>
+    </linearGradient>
+  </defs>
+  <path d="M401 680h24c14 0 25 11 25 25v28c0 7 5 12 12 12h27c14 0 25 11 25 25v25c0 14-11 25-25 25h-27c-7 0-12 5-12 12v28c0 14-11 25-25 25h-24c-14 0-25-11-25-25v-28c0-7-5-12-12-12h-27c-14 0-25-11-25-25v-25c0-14 11-25 25-25h27c7 0 12-5 12-12v-28c0-14 11-25 25-25z" fill="url(#pad)"/>
+  <g fill="url(#buttons)">
+    <circle cx="841" cy="711" r="38"/>
+    <circle cx="778" cy="776" r="38"/>
+    <circle cx="905" cy="776" r="38"/>
+    <circle cx="841" cy="840" r="38"/>
+  </g>
+</svg>
