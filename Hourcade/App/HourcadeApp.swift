@@ -10,6 +10,9 @@ struct HourcadeApp: App {
     init() {
         // 启动 Sparkle：startingUpdater 已开启，这里只需让单例活起来。
         _ = UpdateService.shared
+        // 匿名心跳：启动时检查一次，并挂上周期计时器（覆盖长期驻留菜单栏的情况）。
+        UsageReporter.shared.reportIfNeeded(trigger: .launch)
+        UsageReporter.shared.start()
         Task { @MainActor in BackgroundSyncScheduler.runLaunchSequenceOnce() }
     }
 

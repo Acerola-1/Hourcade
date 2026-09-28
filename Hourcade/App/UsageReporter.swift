@@ -1,0 +1,190 @@
+import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
+
+/// 匿名使用心跳上报：每天最多一次，失败会做少量重试，绝不阻塞或影响主流程。
+/// 直接上报到 PostHog，只携带匿名安装 UUID、App 版本、系统版本、芯片型号、语言、
+/// 分发渠道与 `app` 标识，不采集任何可识别个人身份的信息。
+///
+/// 与 hagimi-monitor 共用同一个 PostHog 项目（免费版只允许一个项目），
+/// 因此每条事件都带 `app: "hourcade"`；在 PostHog 里按该属性过滤即可只看本 App。
+///
+/// 触发方式：
+/// - App 启动时立即检查一次（`.launch`）。
+/// - 启动后台周期计时器，每隔 `checkInterval` 检查一次（`.periodic`），覆盖长期驻留
+///   菜单栏、不重启也不打开设置窗口的场景；同一个计时器也承担失败重试——只有成功发送
+///   后才会把「今天已上报」落盘，失败的话下一次 tick 会自然重试，不需要额外重试队列。
+/// 内部状态由串行队列 queue 独占保护，对外提供异步线程安全接口。
+nonisolated final class UsageReporter: @unchecked Sendable {
+    static let shared = UsageReporter()
+
+    enum Trigger: String, Sendable {
+        case launch
+        case periodic
+    }
+
+    /// 与 hagimi-monitor 共用的 PostHog 项目 key（Project API Key 是客户端可公开的写入键）。
+    private static let apiKey = "phc_o8tBafcRN23obG9XtNurWPhPdpBXZ8yH4D7hMeK2xGYH"
+    /// 用于在同一项目内区分 App。
+    private static let appName = "hourcade"
+    /// 周期检查间隔：不是发送间隔——多数 tick 会因为「今天已上报」而直接跳过，不产生网络请求。
+    private static let checkInterval: TimeInterval = 6 * 60 * 60
+    private static let maxAttempts = 3
+    private static let retryDelay: TimeInterval = 5
+
+    private let endpoint: URL?
+    private let defaults: UserDefaults
+    private let session: URLSession
+    private let installID: String
+
+    /// 串行队列：既是周期计时器的执行队列，也用来保护 `isSending`，避免启动触发和
+    /// 计时器 tick 撞在一起时并发发出两次请求。
+    private let queue = DispatchQueue(label: "dev.acerola.Hourcade.usage-report", qos: .utility)
+    private var timer: DispatchSourceTimer?
+    private var isSending = false
+
+    /// 遥测是否开启。默认开启；用户在设置中关闭后不再上报（见 `reportIfNeeded` 的守卫）。
+    /// 关闭/开启即时生效，无需重启。
+    var isEnabled: Bool {
+        get { defaults.object(forKey: Keys.enabled) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Keys.enabled) }
+    }
+
+    private init(
+        endpoint: URL? = URL(string: "https://us.i.posthog.com/capture/"),
+        defaults: UserDefaults = .standard,
+        session: URLSession = .shared
+    ) {
+        self.endpoint = endpoint
+        self.defaults = defaults
+        self.session = session
+        self.installID = UsageReporter.loadOrCreateInstallID(defaults: defaults)
+    }
+
+    /// 启动后台周期检查计时器，应用生命周期内只需调用一次。
+    func start() {
+        queue.async { [weak self] in
+            guard let self, self.timer == nil else { return }
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now() + Self.checkInterval, repeating: Self.checkInterval)
+            timer.setEventHandler { [weak self] in self?.reportIfNeeded(trigger: .periodic) }
+            self.timer = timer
+            timer.resume()
+        }
+    }
+
+    /// 若今天还没成功上报过，异步发送一次心跳；失败时会重试几次，仍失败则放弃，
+    /// 等下一次触发（周期 tick 或下次启动）再试。
+    func reportIfNeeded(trigger: Trigger) {
+        guard let endpoint else { return }
+        // 遥测退出开关：用户关闭后不再上报，关闭/开启即时生效。
+        guard isEnabled else { return }
+        queue.async { [weak self] in
+            guard let self else { return }
+            guard !self.isSending else { return }
+            let today = UsageReporter.dateString(Date())
+            guard self.defaults.string(forKey: Keys.lastReportedDate) != today else { return }
+            self.isSending = true
+
+            Task.detached(priority: .background) { [weak self] in
+                guard let self else { return }
+                let body = self.payload(trigger: trigger)
+                let succeeded = await self.send(body: body, to: endpoint)
+                self.queue.async {
+                    self.isSending = false
+                    if succeeded {
+                        self.defaults.set(today, forKey: Keys.lastReportedDate)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 最多重试 `maxAttempts` 次，仅在收到 2xx 响应时视为成功。
+    private func send(body: [String: Any], to endpoint: URL) async -> Bool {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 8
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        for attempt in 1...Self.maxAttempts {
+            if let (_, response) = try? await session.data(for: request),
+               let http = response as? HTTPURLResponse,
+               (200..<300).contains(http.statusCode) {
+                return true
+            }
+            if attempt < Self.maxAttempts {
+                try? await Task.sleep(nanoseconds: UInt64(Self.retryDelay * 1_000_000_000))
+            }
+        }
+        return false
+    }
+
+    private func payload(trigger: Trigger) -> [String: Any] {
+        var properties: [String: String] = [
+            "app": Self.appName,
+            "trigger": trigger.rawValue,
+            "os_version": UsageReporter.osVersionString(),
+            "chip": UsageReporter.chipName(),
+            "locale": Locale.current.identifier,
+            // Hourcade 只通过 GitHub 直接分发，没有商店版本。
+            "distribution": "direct",
+        ]
+
+        if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            properties["app_version"] = appVersion
+        }
+
+        return [
+            "api_key": Self.apiKey,
+            "event": "app_ping",
+            "distinct_id": installID,
+            "properties": properties,
+        ]
+    }
+
+    private static func loadOrCreateInstallID(defaults: UserDefaults) -> String {
+        if let existing = defaults.string(forKey: Keys.installID) {
+            return existing
+        }
+        let generated = UUID().uuidString
+        defaults.set(generated, forKey: Keys.installID)
+        return generated
+    }
+
+    private static func dateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private static func osVersionString() -> String {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        return "\(version.majorVersion).\(version.minorVersion)"
+    }
+
+    private static func chipName() -> String {
+        if let brand = sysctlString(name: "machdep.cpu.brand_string") {
+            return brand
+        }
+        return sysctlString(name: "hw.model") ?? "unknown"
+    }
+
+    private static func sysctlString(name: String) -> String? {
+        var size = 0
+        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
+        return String(cString: buffer)
+    }
+}
+
+nonisolated private enum Keys {
+    static let installID = "telemetry.installID"
+    static let lastReportedDate = "telemetry.lastReportedDate"
+    static let enabled = "telemetry.enabled"
+}
