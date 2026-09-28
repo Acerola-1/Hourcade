@@ -98,8 +98,10 @@ struct ContentView: View {
                     nintendo: coordinator.nintendoSnapshot,
                     playStation: coordinator.psnSnapshot,
                     steamConfigured: KeychainSecret.read("steam.apiKey") != nil,
-                    isRefreshing: coordinator.steamSyncing,
-                    refreshError: coordinator.steamError?.text,
+                    isRefreshing: coordinator.isSyncingAll || coordinator.steamSyncing,
+                    refreshError: coordinator.steamSyncError,
+                    nintendoSyncError: coordinator.nintendoSyncError,
+                    psnSyncError: coordinator.psnSyncError,
                     selectPlatform: { platform in
                         switch platform {
                         case .steam: selection = .steam
@@ -120,6 +122,7 @@ struct ContentView: View {
                 NintendoSettingsView(snapshot: coordinator.nintendoSnapshot) { newSnapshot in
                     try LocalSnapshotStore.save(newSnapshot, as: "nintendo")
                     coordinator.nintendoSnapshot = newSnapshot
+                    coordinator.recordManualSuccess(.nintendo, at: newSnapshot.syncedAt)
                     try await SyncCoordinator.shared.saveWidgetSnapshots()
                     NotificationCenter.default.post(name: .pricesDidChange, object: nil)
                 }
@@ -128,6 +131,7 @@ struct ContentView: View {
                     let newSnapshot = PSNSnapshot(library: library, syncedAt: .now)
                     try LocalSnapshotStore.save(newSnapshot, as: "psn")
                     coordinator.psnSnapshot = newSnapshot
+                    coordinator.recordManualSuccess(.playStation, at: newSnapshot.syncedAt)
                     try await SyncCoordinator.shared.saveWidgetSnapshots()
                     NotificationCenter.default.post(name: .pricesDidChange, object: nil)
                 }
@@ -138,11 +142,6 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 610)
-        .task {
-            // Runs once per app process, not once per window: the window can
-            // be closed and reopened freely while the app stays resident.
-            BackgroundSyncScheduler.runLaunchSequenceOnce()
-        }
     }
 
     @ViewBuilder

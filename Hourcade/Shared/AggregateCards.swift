@@ -329,16 +329,14 @@ private struct HeroNoValueCard: View {
                                 .minimumScaleFactor(0.6)
                         }
                         .frame(width: metricWidth, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 6) {
                             CompactFeaturedGameSummary(featuredGame: featuredGame)
-                                .frame(maxHeight: .infinity, alignment: .bottom)
 
                             Text(L10n.widget("Recently Played"))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.80))
 
                             HStack(spacing: 7) {
-                                Spacer(minLength: 0)
                                 if otherRecentGames.isEmpty {
                                     Text(L10n.widget("No history"))
                                         .font(.system(size: 10))
@@ -346,15 +344,14 @@ private struct HeroNoValueCard: View {
                                 } else {
                                     ForEach(otherRecentGames) { game in
                                         HeroRecentCover(game: game)
-                                            .frame(width: 57, height: 70)
+                                            .frame(width: 64, height: 70)
                                     }
                                 }
-                                Spacer(minLength: 0)
                             }
-                            .frame(height: 70)
+                            .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
                         }
                         .padding(10)
-                        .frame(width: 228, height: max(0, geometry.size.height - 18 * 2 - 82 - 64), alignment: .bottom)
+                        .frame(width: 228, height: max(186, geometry.size.height - 18 * 2 - 82 - 64), alignment: .bottom)
                         .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
                     }
 
@@ -727,9 +724,13 @@ private struct HeroRecentCover: View {
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    PlatformBrandLogo(platform: game.platform, size: 18)
+                        .padding(4)
+                }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(game.title)
+        .accessibilityLabel("\(game.title), \(game.platform.title)")
     }
 }
 

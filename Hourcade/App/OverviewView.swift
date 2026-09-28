@@ -10,6 +10,8 @@ struct OverviewView: View {
     let steamConfigured: Bool
     let isRefreshing: Bool
     let refreshError: String?
+    let nintendoSyncError: String?
+    let psnSyncError: String?
     let selectPlatform: (GamePlatform) -> Void
     let syncAll: () -> Void
 
@@ -51,7 +53,7 @@ struct OverviewView: View {
                             systemImage: steamConfigured ? "arrow.clockwise" : "gamecontroller"
                         )
                     } description: {
-                        Text(refreshError ?? (steamConfigured
+                        Text(refreshError ?? nintendoSyncError ?? psnSyncError ?? (steamConfigured
                             ? L10n.tr("数据就绪后会自动显示在这里。也可以进入 Steam 页面重试。")
                             : L10n.tr("选择左侧平台，完成第一次连接后，这里会显示真实游玩数据。")))
                     }
@@ -167,6 +169,16 @@ struct OverviewView: View {
             }
             if let refreshError {
                 Label(L10n.format("Steam 刷新失败：%@。上方保留上次同步结果。", refreshError), systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let nintendoSyncError {
+                Label(L10n.format("%@ 同步失败：%@。已保留上次数据。", GamePlatform.nintendo.title, nintendoSyncError), systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let psnSyncError {
+                Label(L10n.format("%@ 同步失败：%@。已保留上次数据。", GamePlatform.playStation.title, psnSyncError), systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }

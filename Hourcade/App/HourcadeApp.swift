@@ -7,6 +7,10 @@ struct HourcadeApp: App {
     @AppStorage(L10n.languageKey, store: L10n.defaults) private var language: AppLanguage = .system
     @AppStorage(L10n.themeKey, store: L10n.defaults) private var theme: AppTheme = .system
 
+    init() {
+        Task { @MainActor in BackgroundSyncScheduler.runLaunchSequenceOnce() }
+    }
+
     var body: some Scene {
         // Observe the shared preferences without recreating windows or connection state.
         let _ = (language, theme)
@@ -52,12 +56,13 @@ private struct MenuBarContent: View {
 
 /// Hourly data refresh while the app is running (menu bar or window).
 /// NSBackgroundActivityScheduler cooperates with App Nap and sleep; each tick
-/// runs the same orchestration as the manual 立即同步 entry. The app process is
-/// what owns the schedule — starting it here, not in the window, so closing or
-/// reopening windows never restarts or duplicates it.
+/// checks whether connected data is stale. The app process owns this schedule,
+/// independent of whether its window is open.
 @MainActor
 enum BackgroundSyncScheduler {
     private static var activity: NSBackgroundActivityScheduler?
+    private static var wakeObserver: NSObjectProtocol?
+    private static var activationObserver: NSObjectProtocol?
 
     static func start() {
         guard activity == nil else { return }
@@ -67,11 +72,21 @@ enum BackgroundSyncScheduler {
         scheduler.qualityOfService = .utility
         scheduler.schedule { completion in
             Task { @MainActor in
-                await SyncCoordinator.shared.syncAll()
+                await SyncCoordinator.shared.refreshIfStale()
                 completion(.finished)
             }
         }
         activity = scheduler
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in await SyncCoordinator.shared.refreshIfStale() }
+        }
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in await SyncCoordinator.shared.refreshIfStale() }
+        }
     }
 
     static func runLaunchSequenceOnce() {

@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    # 使用 xcode-27 镜像（运行在 macOS 27，搭载 Xcode 27 与 macOS 27 SDK，与本地构建环境一致）
+    runs-on: xcode-27
+    permissions:
+      contents: write
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          if [ -d "/Applications/Xcode_27.0.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_27.0.app/Contents/Developer
+          elif [ -d "/Applications/Xcode.app" ]; then
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+          xcodebuild -version
+
+      - name: Validate tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # tag 名是外部可控输入:先按 semver 白名单校验,再用于任何路径或 URL。
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::非法 tag 名: $RELEASE_TAG"; exit 1; }
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          # 创建临时钥匙串并导入 Developer ID Application 证书
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$RUNNER_TEMP/cert.p12" \
+            -P "$MACOS_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # 允许 codesign 无提示访问私钥
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # 将临时钥匙串加入搜索列表（此处依赖单词拆分把已有钥匙串拆成多个参数）
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build & sign (Developer ID)
+        run: |
+          # Hourcade 不用 MARKETING_VERSION 判断更新,但归档包仍需一个单调递增的
+          # CFBundleVersion:使用 workflow 的 run number,避免与工程里的值漂移。
+          BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+
+          # 必须显式指定 Developer ID 身份与 Manual 签名:工程默认的
+          # CODE_SIGN_IDENTITY 是 Apple Development,那样签出来的产物会带
+          # get-task-allow,公证会直接拒绝。
+          xcodebuild -project Hourcade.xcodeproj \
+            -scheme Hourcade \
+            -configuration Release \
+            -arch arm64 \
+            -archivePath build/Hourcade.xcarchive \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
+            archive
+
+          APP_INFO="build/Hourcade.xcarchive/Products/Applications/Hourcade.app/Contents/Info.plist"
+          ACTUAL_BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_INFO")"
+          if [ "$ACTUAL_BUILD_NUMBER" != "$BUILD_NUMBER" ]; then
+            echo "::error::归档 build number ($ACTUAL_BUILD_NUMBER) 与 GitHub run number ($BUILD_NUMBER) 不一致"
+            exit 1
+          fi
+
+      - name: Verify nested component signatures
+        run: |
+          # 主应用与组件扩展都必须由 Developer ID 签名、启用 Hardened Runtime、带时间戳。
+          APP_PATH="build/Hourcade.xcarchive/Products/Applications/Hourcade.app"
+          APPEX_PATH="$APP_PATH/Contents/PlugIns/HourcadeWidgets.appex"
+
+          for component in "$APPEX_PATH" "$APP_PATH"; do
+            echo "--- $component ---"
+            SIGNING_INFO="$(codesign -dvvv "$component" 2>&1)"
+            echo "$SIGNING_INFO"
+            echo "$SIGNING_INFO" | grep -q "Authority=Developer ID Application"
+            echo "$SIGNING_INFO" | grep -q "TeamIdentifier=$APPLE_TEAM_ID"
+            echo "$SIGNING_INFO" | grep -Eq "Timestamp=|Signed Time="
+            echo "$SIGNING_INFO" | grep -q "runtime"
+
+            # get-task-allow 是开发签名注入的调试权限,公证会直接拒绝;
+            # 历史上手工打包的产物就带着它,因此这里作为硬门禁逐项确认。
+            ENTITLEMENTS="$(codesign -d --entitlements - "$component" 2>/dev/null || true)"
+            if echo "$ENTITLEMENTS" | grep -q "get-task-allow"; then
+              echo "::error::$component 残留 get-task-allow,公证会被拒绝"
+              exit 1
+            fi
+          done
+
+      - name: Notarize .app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          APP_PATH="build/Hourcade.xcarchive/Products/Applications/Hourcade.app"
+
+          # 校验签名 & Hardened Runtime
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          # 打包成 zip 提交公证
+          ditto -c -k --keepParent "$APP_PATH" "$RUNNER_TEMP/Hourcade.zip"
+
+          # 提交公证并捕获 submission id;失败时拉取 Apple 详细日志便于定位
+          SUBMIT_OUT="$(xcrun notarytool submit "$RUNNER_TEMP/Hourcade.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait 2>&1)"
+          echo "$SUBMIT_OUT"
+
+          SUBMISSION_ID="$(echo "$SUBMIT_OUT" | awk '/id:/{print $2; exit}')"
+          if ! echo "$SUBMIT_OUT" | grep -q "status: Accepted"; then
+            echo "::error::.app 公证未通过，拉取详细日志："
+            if [ -n "$SUBMISSION_ID" ]; then
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
+            fi
+            exit 1
+          fi
+
+          # 将公证票据钉到 .app 上（离线也能通过 Gatekeeper）
+          xcrun stapler staple "$APP_PATH"
+
+      - name: Package .dmg
+        run: |
+          APP_PATH="build/Hourcade.xcarchive/Products/Applications/Hourcade.app"
+          mkdir -p dmg-temp
+          cp -R "$APP_PATH" dmg-temp/
+          ln -s /Applications dmg-temp/Applications
+          hdiutil create -volname Hourcade \
+            -srcfolder dmg-temp \
+            -ov -format UDZO \
+            build/Hourcade.dmg
+
+      - name: Notarize .dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          # 与 .app 一致:notarytool 在 Invalid 时不一定返回非零退出码,
+          # 必须解析输出确认 Accepted,失败时拉日志定位。
+          SUBMIT_OUT="$(xcrun notarytool submit build/Hourcade.dmg \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait 2>&1)"
+          echo "$SUBMIT_OUT"
+
+          SUBMISSION_ID="$(echo "$SUBMIT_OUT" | awk '/id:/{print $2; exit}')"
+          if ! echo "$SUBMIT_OUT" | grep -q "status: Accepted"; then
+            echo "::error::.dmg 公证未通过，拉取详细日志："
+            if [ -n "$SUBMISSION_ID" ]; then
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
+            fi
+            exit 1
+          fi
+
+          xcrun stapler staple build/Hourcade.dmg
+
+      - name: Verify Gatekeeper acceptance
+        run: |
+          # 发布前最后一道门禁:确认公证票据已钉上,且 Gatekeeper 真的接受 DMG 里的 .app
+          # (用户首次打开的正是这个判定,历史上未公证的产物在这里被判 rejected)。
+          xcrun stapler validate build/Hourcade.dmg
+
+          MOUNT_POINT="$RUNNER_TEMP/hourcade-mount"
+          hdiutil attach build/Hourcade.dmg -nobrowse -mountpoint "$MOUNT_POINT" >/dev/null
+          /usr/sbin/spctl -a -vvv -t exec "$MOUNT_POINT/Hourcade.app"
+          hdiutil detach "$MOUNT_POINT" >/dev/null
+
+      # 第三方 action 固定到 commit SHA:可变 tag 被劫持时能以 write 权限
+      # 偷取 APPLE_ID 等敏感 env 或篡改 Release 产物。
+      - name: Create Release & Upload
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            build/Hourcade.dmg
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 作业收尾删除含 Developer ID 私钥的临时钥匙串;GitHub 托管 runner 会整
+      # 机回收,此步主要防自托管 runner 上 $RUNNER_TEMP 残留私钥。
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true

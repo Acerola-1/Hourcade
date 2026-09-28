@@ -120,6 +120,23 @@
         }
       }
     },
+    "%@ 同步失败：%@。已保留上次数据。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sync failed: %@. Previous data is still shown."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 同步失败：%@。已保留上次数据。"
+          }
+        }
+      }
+    },
     "%lld小时": {
       "extractionState": "manual",
       "localizations": {

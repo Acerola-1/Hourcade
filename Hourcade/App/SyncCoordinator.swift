@@ -8,37 +8,86 @@ import WidgetKit
 @MainActor
 final class SyncCoordinator {
     static let shared = SyncCoordinator()
+    private static let syncRecordsKey = "platformSyncRecords"
+    private static let lastAutoAttemptKey = "lastAutomaticSyncAttempt"
+    private static let refreshInterval: TimeInterval = 3_600
+    private static let retryInterval: TimeInterval = 900
 
     private init() {
         steamSnapshot = LocalSnapshotStore.load("steam")
         nintendoSnapshot = LocalSnapshotStore.load("nintendo")
         psnSnapshot = LocalSnapshotStore.load("psn")
+        if let data = UserDefaults.standard.data(forKey: Self.syncRecordsKey),
+           let saved = try? JSONDecoder().decode([String: PlatformSyncRecord].self, from: data) {
+            syncRecords = saved
+        }
     }
 
     var steamSnapshot: SteamSnapshot?
     var nintendoSnapshot: NintendoSnapshot?
     var psnSnapshot: PSNSnapshot?
+    var isSyncingAll = false
     var steamSyncing = false
     var steamError: AccountMessage?
+    private(set) var syncRecords: [String: PlatformSyncRecord] = [:]
+
+    var nintendoSyncError: String? { syncRecords[GamePlatform.nintendo.rawValue]?.lastError }
+    var psnSyncError: String? { syncRecords[GamePlatform.playStation.rawValue]?.lastError }
+    var steamSyncError: String? { steamError?.text ?? syncRecords[GamePlatform.steam.rawValue]?.lastError }
 
     @MainActor
     func runLaunchSequence() async {
         migrateNintendoSessionToken()
         do { try await saveWidgetSnapshots() } catch { steamError = .widgetWriteFailure(error) }
-        if let steamSnapshot {
-            // Refresh the library without waiting for cached artwork downloads.
-            async let publication: Void = publishSteamWidget(steamSnapshot)
-            await autoRefreshSteam()
-            await publication
-        } else {
-            await autoRefreshSteam()
+        let previousSteamDate = steamSnapshot?.syncedAt
+        await refreshIfStale()
+        if let steamSnapshot, steamSnapshot.syncedAt == previousSteamDate {
+            await SteamAPI.cacheArtwork(for: steamSnapshot)
+            reloadWidgets()
         }
-        // Every connected platform refreshes on launch so the overview never
-        // shows week-old play data that only a manual sync would fix.
-        await refreshNintendo()
-        await refreshPlayStation()
-        await cachePlatformArtwork()
-        refreshPrices()
+    }
+
+    /// Called on launch, wake and activation. A failed platform can retry after
+    /// 15 minutes; successful snapshots are fetched again once an hour old.
+    func refreshIfStale() async {
+        guard !isSyncingAll else { return }
+        let now = Date.now
+        if let lastAttempt = UserDefaults.standard.object(forKey: Self.lastAutoAttemptKey) as? Date,
+           now.timeIntervalSince(lastAttempt) < Self.retryInterval { return }
+        let steamConnected = UserDefaults.standard.string(forKey: "steam.account")?.isEmpty == false
+            && KeychainSecret.read("steam.apiKey") != nil
+        let nintendoConnected = KeychainSecret.read("nintendo.sessionToken") != nil
+        let psnConnected = KeychainSecret.read("psn.refreshToken") != nil
+        let stale = (steamConnected && isStale(steamSnapshot?.syncedAt, at: now))
+            || (nintendoConnected && isStale(nintendoSnapshot?.syncedAt, at: now))
+            || (psnConnected && isStale(psnSnapshot?.syncedAt, at: now))
+        guard stale else { return }
+        UserDefaults.standard.set(now, forKey: Self.lastAutoAttemptKey)
+        await syncAll()
+    }
+
+    private func isStale(_ date: Date?, at now: Date) -> Bool {
+        guard let date else { return true }
+        return now.timeIntervalSince(date) >= Self.refreshInterval
+    }
+
+    private func updateSyncRecord(_ platform: GamePlatform, success: Date? = nil, error: Error? = nil) {
+        var record = syncRecords[platform.rawValue] ?? PlatformSyncRecord()
+        if success == nil && error == nil { record.lastAttempt = .now }
+        if let success {
+            record.lastSuccess = success
+            record.lastError = nil
+        } else if let error {
+            record.lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+        syncRecords[platform.rawValue] = record
+        if let data = try? JSONEncoder().encode(syncRecords) {
+            UserDefaults.standard.set(data, forKey: Self.syncRecordsKey)
+        }
+    }
+
+    func recordManualSuccess(_ platform: GamePlatform, at date: Date) {
+        updateSyncRecord(platform, success: date)
     }
 
     @MainActor
@@ -183,29 +232,33 @@ final class SyncCoordinator {
 
     private func autoRefreshSteam() async {
         guard let account = UserDefaults.standard.string(forKey: "steam.account"),
-              !account.isEmpty, let key = KeychainSecret.read("steam.apiKey")
+              !account.isEmpty, KeychainSecret.read("steam.apiKey") != nil
         else { return }
-        _ = await syncSteam(account, key)
+        _ = await syncSteam(account, "")
     }
 
     /// Refreshes every platform the user has already connected, in place, without
     /// sending them to each platform page. Platforms without stored credentials are
     /// left alone so the button never turns into an unexpected login prompt.
     func syncAll() async {
-        guard !steamSyncing else { return }
-        steamSyncing = true
-        defer { steamSyncing = false }
+        guard !isSyncingAll else { return }
+        isSyncingAll = true
+        defer { isSyncingAll = false }
 
         await autoRefreshSteam()
         await refreshNintendo()
         await refreshPlayStation()
-        await cachePlatformArtwork()
         do { try await saveWidgetSnapshots() } catch { steamError = .widgetWriteFailure(error) }
         refreshPrices()
+        Task { @MainActor in
+            await cachePlatformArtwork()
+            reloadWidgets()
+        }
     }
 
     private func refreshNintendo() async {
         guard let token = KeychainSecret.read("nintendo.sessionToken") else { return }
+        updateSyncRecord(.nintendo)
         do {
             let result = try await NintendoAPI.load(savedSessionToken: token, login: nil)
             let newSnapshot = NintendoSnapshot(
@@ -216,13 +269,16 @@ final class SyncCoordinator {
             )
             try LocalSnapshotStore.save(newSnapshot, as: "nintendo")
             nintendoSnapshot = newSnapshot
+            updateSyncRecord(.nintendo, success: newSnapshot.syncedAt)
         } catch {
             // A failed platform must not discard the others' fresh data.
+            updateSyncRecord(.nintendo, error: error)
         }
     }
 
     private func refreshPlayStation() async {
         guard let refresh = KeychainSecret.read("psn.refreshToken") else { return }
+        updateSyncRecord(.playStation)
         do {
             let (library, rotated) = try await PSNAPI.load(
                 savedRefreshToken: refresh,
@@ -232,8 +288,10 @@ final class SyncCoordinator {
             let newSnapshot = PSNSnapshot(library: library, syncedAt: .now)
             try LocalSnapshotStore.save(newSnapshot, as: "psn")
             psnSnapshot = newSnapshot
+            updateSyncRecord(.playStation, success: newSnapshot.syncedAt)
         } catch {
             // The previous PlayStation snapshot survives a failed refresh.
+            updateSyncRecord(.playStation, error: error)
         }
     }
 
@@ -247,6 +305,7 @@ final class SyncCoordinator {
             steamError = .text("请输入 Web API Key")
             return false
         }
+        updateSyncRecord(.steam)
         do {
             var library = try await SteamAPI.load(account: account, key: key)
             if library.player == nil,
@@ -258,6 +317,7 @@ final class SyncCoordinator {
             try LocalSnapshotStore.save(newSnapshot, as: "steam")
             UserDefaults.standard.set(account.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "steam.account")
             steamSnapshot = newSnapshot
+            updateSyncRecord(.steam, success: newSnapshot.syncedAt)
             await publishSteamWidget(newSnapshot)
             if library.games.isEmpty {
                 steamError = .text("Steam 没有返回游戏。请检查个人资料的“游戏详情”隐私设置；改为公开会让其他人也能查看相关游戏信息")
@@ -266,6 +326,7 @@ final class SyncCoordinator {
             return true
         } catch {
             steamError = .failure(error)
+            updateSyncRecord(.steam, error: error)
             return false
         }
     }
@@ -294,6 +355,12 @@ final class SyncCoordinator {
             _ = await (steam, nintendo, psn)
         }
     }
+}
+
+struct PlatformSyncRecord: Codable {
+    var lastAttempt: Date?
+    var lastSuccess: Date?
+    var lastError: String?
 }
 
 // Messages stay symbolic so a language switch also updates existing sync results.
