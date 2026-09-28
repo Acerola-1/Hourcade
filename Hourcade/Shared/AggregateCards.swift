@@ -82,12 +82,13 @@ struct AggregateCard: View {
     let style: AggregateStyle
     let snapshot: GameSnapshot
     var featuredGame: FeaturedGame? = nil
+    var rendersHeroBackdropInContent = true
 
     var body: some View {
         GeometryReader { geometry in
             Group {
                 switch style {
-                case .heroNoValue: HeroNoValueCard(snapshot: snapshot, featuredGame: featuredGame ?? snapshot.heroCandidates[0])
+                case .heroNoValue: HeroNoValueCard(snapshot: snapshot, featuredGame: featuredGame ?? snapshot.heroCandidates[0], showsBackdrop: rendersHeroBackdropInContent)
                 case .atlas: DataAggregateCard(snapshot: snapshot)
                 case .platforms: PlatformAggregateCard(snapshot: snapshot)
                 case .gallery: GalleryAggregateCard(snapshot: snapshot, platform: .steam)
@@ -166,7 +167,7 @@ private struct PlatformBrandLogo: View {
     }
 }
 
-private struct HeroArtworkBackdrop: View {
+struct HeroArtworkBackdrop: View {
     let featuredGame: FeaturedGame
     let size: CGSize
 
@@ -285,6 +286,7 @@ private struct CompactFeaturedGameSummary: View {
 private struct HeroNoValueCard: View {
     let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
+    let showsBackdrop: Bool
 
     private var otherRecentGames: [RecentGame] {
         Array(snapshot.recentGames
@@ -296,7 +298,9 @@ private struct HeroNoValueCard: View {
         GeometryReader { geometry in
             let metricWidth = max(0, geometry.size.width - 18 * 2 - 228 - 26)
             ZStack {
-                HeroArtworkBackdrop(featuredGame: featuredGame, size: geometry.size)
+                if showsBackdrop {
+                    HeroArtworkBackdrop(featuredGame: featuredGame, size: geometry.size)
+                }
 
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .top, spacing: 14) {
