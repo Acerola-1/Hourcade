@@ -61,4 +61,4 @@ omitted:
 
 ## 历史材料
 
-早期概念图（方案 A–D 定名图、四张桌面全景合成图）与 2026-09-24 初版 README / DESIGN 已移入 `历史资产/`，仅作溯源参考，与现状不一致时以本文档和代码为准。App 图标的概念稿与决策记录在 `Design/IconConcepts/`。
+早期概念图（方案 A–D 定名图、四张桌面全景合成图）与 2026-09-24 初版 README / DESIGN 已移入 `legacy-assets/`，仅作溯源参考，与现状不一致时以本文档和代码为准。App 图标的概念稿与决策记录在 `Design/IconConcepts/`。

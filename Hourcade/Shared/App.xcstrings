@@ -2448,6 +2448,57 @@
           }
         }
       }
+    },
+    "隐私": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐私"
+          }
+        }
+      }
+    },
+    "匿名使用数据": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anonymous Usage Data"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匿名使用数据"
+          }
+        }
+      }
+    },
+    "仅上报匿名心跳（安装 UUID、版本、系统与芯片型号、语言），不含账号信息与游玩内容；关闭后立即停止。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sends an anonymous heartbeat only (install UUID, app version, OS and chip model, locale). No account information or play data is included. Turning this off stops reporting immediately."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅上报匿名心跳（安装 UUID、版本、系统与芯片型号、语言），不含账号信息与游玩内容；关闭后立即停止。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

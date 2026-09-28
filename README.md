@@ -4,12 +4,7 @@ macOS 桌面小组件，把 Steam、Nintendo Switch 和 PlayStation 的游玩数
 
 ## 功能
 
-**桌面组件（10 款，命名 A1–A6 / M1–M4）**
-
-- 超大号（systemExtraLarge）：A1 游戏人生（英雄封面）、A2 数据概览（环形占比 + 动态活动面板）、A3 平台（竖排数据 + 三张平台封面）、A4/A5/A6 游戏墙（Steam / Switch / PS 各自的 Top 封面墙 + 成就/奖杯数）
-- 中号（systemMedium）：M1 迷你汇总（全平台）、M2/M3/M4 单平台迷你（文字排行 + 封面背景）
-- 组件与「桌面组件预览」页读取同一份合并快照（App Group 内 `accounts-widget.json`），预览即所得
-- 英雄封面、近期游戏轮换由随机时间线驱动，宿主预览每 8 秒交叉淡入
+**桌面组件 10 款**
 
 **数据接入**
 
@@ -25,43 +20,8 @@ macOS 桌面小组件，把 Steam、Nintendo Switch 和 PlayStation 的游玩数
 
 ## 系统要求
 
-- macOS 15+，Xcode 27（Swift 6 工具链）
-- 签名需要配置开发团队；App Group 为 `$(TeamID).dev.acerola.Hourcade`
+- macOS 15 或更高版本
 
-## 构建
+## 隐私
 
-打开 `Hourcade.xcodeproj`，选择 **Hourcade** scheme 运行。命令行：
-
-```sh
-xcodebuild -project Hourcade.xcodeproj -scheme Hourcade \
-  -configuration Debug -destination 'platform=macOS,arch=arm64' build
-```
-
-首次使用：在侧边栏选择平台完成连接（Steam 需要个人资料链接 + Web API Key，Nintendo / PSN 走系统浏览器登录），数据就绪后回到桌面添加组件。
-
-## 工程结构
-
-```
-Hourcade/
-  App/            宿主界面与平台 API
-    AccountDashboard.swift        侧边栏壳、导航、全平台同步编排、PriceValue
-    PlatformPageChrome.swift      页面骨架、统计行、三平台游戏列表
-    PlatformSettingsPages.swift   Steam / Nintendo / PSN 账号页
-    GeneralSettingsView.swift     常规设置（语言、主题、缓存）与封面缓存管理
-    OverviewView.swift            总览页与通用封面管线（CoverStore）
-    SteamAPI.swift / PSNAPI.swift / NintendoAPI.swift
-    SteamWebLogin / PSNWebLogin / NintendoWebLogin.swift
-  Shared/         宿主与组件扩展共享（同时编入两个 target）
-    GameSnapshot.swift            组件数据模型、卡片样式枚举、Steam 快照存储
-    PlatformSnapshots.swift       Switch/PSN 快照、合并快照 WidgetSnapshotStore
-    AggregateCards.swift          A1–A6 / M1–M4 全部卡片视图
-    KeychainSecret.swift / DisplayFormat.swift / Localization.swift
-  Widgets/        WidgetKit 扩展入口（HourcadeWidgets.swift）
-历史资产/          早期概念图与初版文档（已被现状取代，仅作参考）
-Design/IconConcepts/  App 图标概念稿与决策记录
-HANDOFF.md         交接记录：已验证结论、用户决定、调查证据
-```
-
-## 状态说明
-
-Steam、Nintendo、PSN 三平台均已用真实账号完成端到端同步并核对了总览与组件呈现。价格来源均为公开或半公开接口，可能随服务端变更失效——失效时对应游戏显示「—」，不影响其余数据。详细的服务端怪癖、决策依据与调查证据见 `HANDOFF.md`。
+Hourcade 默认每天最多上报一次匿名心跳（安装 UUID、App 版本、系统版本、芯片型号、语言），用于了解各版本的装机与留存情况，不含账号信息、游玩数据或任何可识别个人身份的内容。可在「常规设置 → 隐私」中随时关闭，关闭后立即停止上报。

@@ -172,6 +172,19 @@ struct GeneralSettingsView: View {
                 Text(L10n.tr("清除后，封面会在下次同步或启动时重新下载。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
+            SettingsPanel(title: L10n.tr("隐私")) {
+                Toggle(isOn: Binding(
+                    get: { UsageReporter.shared.isEnabled },
+                    set: { UsageReporter.shared.isEnabled = $0 }
+                )) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L10n.tr("匿名使用数据"))
+                            .font(.subheadline.weight(.medium))
+                        Text(L10n.tr("仅上报匿名心跳（安装 UUID、版本、系统与芯片型号、语言），不含账号信息与游玩内容；关闭后立即停止。"))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         .onChange(of: language) { _, _ in
             WidgetCenter.shared.reloadAllTimelines()
