@@ -108,7 +108,8 @@ struct WidgetStudioView: View {
     }
 
     private var preview: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let previewSize = CGSize(width: isMedium ? 329 : 720, height: isMedium ? 155 : 360)
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(L10n.tr("桌面预览"))
                     .font(.system(size: 11, weight: .semibold))
@@ -119,9 +120,14 @@ struct WidgetStudioView: View {
             }
 
             Group {
-                AggregateCard(style: selectedStyle, snapshot: snapshot, featuredGame: featuredGame)
-                    .frame(width: isMedium ? 329 : 720,
-                           height: isMedium ? 155 : 360)
+                AggregateCard(style: selectedStyle, snapshot: snapshot, featuredGame: featuredGame,
+                              rendersHeroBackdropInContent: selectedStyle != .heroNoValue)
+                    .frame(width: previewSize.width, height: previewSize.height)
+                    .background {
+                        if selectedStyle == .heroNoValue {
+                            HeroArtworkBackdrop(featuredGame: featuredGame, size: previewSize)
+                        }
+                    }
             }
             .clipShape(RoundedRectangle(cornerRadius: isMedium ? 18 : 24))
             .overlay(RoundedRectangle(cornerRadius: isMedium ? 18 : 24).strokeBorder(Color.primary.opacity(0.15)))

@@ -56,12 +56,17 @@ struct AggregateWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: style.liveWidgetKind, provider: AggregateProvider(style: style)) { entry in
-            AggregateCard(style: style, snapshot: entry.snapshot, featuredGame: entry.featuredGame)
+            AggregateCard(style: style, snapshot: entry.snapshot, featuredGame: entry.featuredGame,
+                          rendersHeroBackdropInContent: style != .heroNoValue)
                 .containerBackground(for: .widget) {
-                    // Match the platform minis' own gradient so any rounding
-                    // seams blend into the card instead of showing as a dark rim.
-                    LinearGradient(colors: [WidgetPalette.ink, WidgetPalette.ink],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                    if style == .heroNoValue {
+                        GeometryReader { geometry in
+                            HeroArtworkBackdrop(featuredGame: entry.featuredGame, size: geometry.size)
+                        }
+                    } else {
+                        LinearGradient(colors: [WidgetPalette.ink, WidgetPalette.ink],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                    }
                 }
         }
         .configurationDisplayName(Text(verbatim: "\(style.letter) \(style.title)"))
