@@ -30,7 +30,6 @@ struct WidgetStudioView: View {
         VStack(alignment: .leading, spacing: 14) {
             styleSelector
             preview
-            footnote
         }
         .onReceive(NotificationCenter.default.publisher(for: SteamWidgetStore.didChange)) { _ in
             liveSnapshot = WidgetSnapshotStore.load()?.gameSnapshot ?? .empty
@@ -108,13 +107,13 @@ struct WidgetStudioView: View {
     }
 
     private var preview: some View {
-        let previewSize = CGSize(width: isMedium ? 329 : 720, height: isMedium ? 155 : 360)
+        let previewSize = CGSize(width: isMedium ? 329 : 704, height: isMedium ? 155 : 344)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(L10n.tr("桌面预览"))
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
-                Text(isMedium ? "329 × 155 pt · 中号" : "720 × 360 pt · 超大号")
+                Text(isMedium ? "329 × 155 pt · 中号" : "704 × 344 pt · 超大号")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
@@ -133,24 +132,10 @@ struct WidgetStudioView: View {
             .overlay(RoundedRectangle(cornerRadius: isMedium ? 18 : 24).strokeBorder(Color.primary.opacity(0.15)))
             .shadow(color: .black.opacity(0.30), radius: 16, y: 10)
             .frame(maxWidth: .infinity)
-            .frame(height: isMedium ? 220 : 392)
+            .frame(height: isMedium ? 220 : 376)
         }
     }
 
-    private var footnote: some View {
-        HStack(spacing: 9) {
-            Circle().fill(WidgetPalette.nintendo).frame(width: 6, height: 6)
-            Text(snapshot.hasData
-                 ? L10n.tr("真实数据：按已接入平台的官方接口同步；逐日记录尚未提供。")
-                 : L10n.tr("尚未同步：先在平台账号页完成同步，再回到这里查看预览。"))
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text("SwiftUI · WidgetKit")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.tertiary)
-        }
-    }
 }
 
 /// The studio lists widgets grouped by WidgetKit family: the desktop-scale
@@ -163,8 +148,8 @@ private enum WidgetFamilyGroup: CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .extraLarge: L10n.tr("超大号 · 桌面聚合")
-        case .medium: L10n.tr("中号 · 迷你汇总")
+        case .extraLarge: L10n.tr("超大号")
+        case .medium: L10n.tr("中号")
         }
     }
 
