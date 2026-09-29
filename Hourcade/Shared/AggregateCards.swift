@@ -336,7 +336,7 @@ private struct HeroNoValueCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .top, spacing: 14) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(L10n.widget("Overview"))
+                            Text(L10n.widget("Game Life"))
                                 .font(.system(size: 32, weight: .medium, design: .rounded))
                             Text(L10n.widget("Play more. Live better."))
                                 .font(.system(size: 12))
