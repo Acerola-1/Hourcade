@@ -283,6 +283,36 @@ private struct CompactFeaturedGameSummary: View {
 
 /// A1: the open hero composition, with a compact recent-games shelf beside
 /// the featured game. The full platform and fortnight tray stays intact.
+private struct HeroCardLayout {
+    let verticalInset: CGFloat
+    let coverHeight: CGFloat
+    let featuredHeight: CGFloat
+    let trayHeight: CGFloat
+    let sectionGap: CGFloat
+    let panelSpacing: CGFloat
+    let panelPadding: CGFloat
+
+    init(height: CGFloat) {
+        if height < 390 {
+            verticalInset = height < 336 ? 10 : 14
+            coverHeight = min(62, max(50, height - 282))
+            featuredHeight = coverHeight + 110
+            trayHeight = 78
+            sectionGap = 0
+            panelSpacing = 4
+            panelPadding = 8
+        } else {
+            verticalInset = 18
+            coverHeight = 70
+            featuredHeight = max(186, height - 202)
+            trayHeight = 82
+            sectionGap = 12
+            panelSpacing = 6
+            panelPadding = 10
+        }
+    }
+}
+
 private struct HeroNoValueCard: View {
     let snapshot: GameSnapshot
     let featuredGame: FeaturedGame
@@ -296,6 +326,7 @@ private struct HeroNoValueCard: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let layout = HeroCardLayout(height: geometry.size.height)
             let metricWidth = max(0, geometry.size.width - 18 * 2 - 228 - 26)
             ZStack {
                 if showsBackdrop {
@@ -305,7 +336,7 @@ private struct HeroNoValueCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .top, spacing: 14) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(L10n.widget("Game Life"))
+                            Text(L10n.widget("Overview"))
                                 .font(.system(size: 32, weight: .medium, design: .rounded))
                             Text(L10n.widget("Play more. Live better."))
                                 .font(.system(size: 12))
@@ -317,7 +348,7 @@ private struct HeroNoValueCard: View {
                         SyncStatus(updatedAt: snapshot.hasData ? snapshot.updatedAt : nil)
                     }
 
-                    Spacer(minLength: 12)
+                    Spacer(minLength: layout.sectionGap)
 
                     HStack(alignment: .bottom, spacing: 26) {
                         VStack(alignment: .leading, spacing: 5) {
@@ -333,7 +364,7 @@ private struct HeroNoValueCard: View {
                                 .minimumScaleFactor(0.6)
                         }
                         .frame(width: metricWidth, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: layout.panelSpacing) {
                             CompactFeaturedGameSummary(featuredGame: featuredGame)
 
                             Text(L10n.widget("Recently Played"))
@@ -348,18 +379,18 @@ private struct HeroNoValueCard: View {
                                 } else {
                                     ForEach(otherRecentGames) { game in
                                         HeroRecentCover(game: game)
-                                            .frame(width: 64, height: 70)
+                                            .frame(width: 64, height: layout.coverHeight)
                                     }
                                 }
                             }
-                            .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: layout.coverHeight, alignment: .leading)
                         }
-                        .padding(10)
-                        .frame(width: 228, height: max(186, geometry.size.height - 18 * 2 - 82 - 64), alignment: .bottom)
+                        .padding(layout.panelPadding)
+                        .frame(width: 228, height: layout.featuredHeight, alignment: .bottom)
                         .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
                     }
 
-                    Spacer(minLength: 12)
+                    Spacer(minLength: layout.sectionGap)
 
                     HStack(spacing: 0) {
                         ForEach(snapshot.platforms) { activity in
@@ -370,11 +401,12 @@ private struct HeroNoValueCard: View {
                         FortnightTotalPanel(playedMinutes: snapshot.fortnightPlayedMinutes, isAvailable: snapshot.hasData)
                             .frame(width: 130)
                     }
-                    .frame(height: 82)
+                    .frame(height: layout.trayHeight)
                     .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
                 }
                 .foregroundStyle(.white)
-                .padding(18)
+                .padding(.horizontal, 18)
+                .padding(.vertical, layout.verticalInset)
             }
             .coordinateSpace(name: heroNoValueCoordinateSpace)
         }

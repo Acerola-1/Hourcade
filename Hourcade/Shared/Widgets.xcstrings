@@ -463,23 +463,6 @@
         }
       }
     },
-    "Mini summary": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mini summary"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "迷你汇总"
-          }
-        }
-      }
-    },
     "More": {
       "extractionState": "manual",
       "localizations": {
@@ -616,6 +599,23 @@
         }
       }
     },
+    "Overview": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overview"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "总览"
+          }
+        }
+      }
+    },
     "PS wall": {
       "extractionState": "manual",
       "localizations": {
@@ -629,23 +629,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "PS 游戏墙"
-          }
-        }
-      }
-    },
-    "PS · Mini": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PS · Mini"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "PS · 迷你"
           }
         }
       }
@@ -804,23 +787,6 @@
         }
       }
     },
-    "Steam · Mini": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Steam · Mini"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Steam · 迷你"
-          }
-        }
-      }
-    },
     "Switch wall": {
       "extractionState": "manual",
       "localizations": {
@@ -834,23 +800,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Switch 游戏墙"
-          }
-        }
-      }
-    },
-    "Switch · Mini": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switch · Mini"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Switch · 迷你"
           }
         }
       }

@@ -698,19 +698,19 @@
         }
       }
     },
-    "中号 · 迷你汇总": {
+    "中号": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Medium · Mini summary"
+            "value": "Medium"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "中号 · 迷你汇总"
+            "value": "中号"
           }
         }
       }
@@ -1068,23 +1068,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "小时"
-          }
-        }
-      }
-    },
-    "尚未同步：先在平台账号页完成同步，再回到这里查看预览。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not synced yet: sync your platform accounts first, then come back to preview."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "尚未同步：先在平台账号页完成同步，再回到这里查看预览。"
           }
         }
       }
@@ -1854,23 +1837,6 @@
         }
       }
     },
-    "真实数据：按已接入平台的官方接口同步；逐日记录尚未提供。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Live data: synced from connected platforms' official APIs; daily records not yet available."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "真实数据：按已接入平台的官方接口同步；逐日记录尚未提供。"
-          }
-        }
-      }
-    },
     "立即同步": {
       "extractionState": "manual",
       "localizations": {
@@ -2092,19 +2058,19 @@
         }
       }
     },
-    "超大号 · 桌面聚合": {
+    "超大号": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Extra Large · Desktop aggregate"
+            "value": "Extra large"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "超大号 · 桌面聚合"
+            "value": "超大号"
           }
         }
       }

@@ -146,16 +146,16 @@ enum AggregateStyle: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .heroNoValue: L10n.widget("Game Life")
+        case .heroNoValue: L10n.widget("Overview")
         case .atlas: L10n.widget("Data overview")
         case .platforms: L10n.widget("Platforms")
         case .gallery: L10n.widget("Steam wall")
         case .galleryNintendo: L10n.widget("Switch wall")
         case .galleryPlayStation: L10n.widget("PS wall")
-        case .mini: L10n.widget("Mini summary")
-        case .steamMini: L10n.widget("Steam · Mini")
-        case .nintendoMini: L10n.widget("Switch · Mini")
-        case .playStationMini: L10n.widget("PS · Mini")
+        case .mini: L10n.widget("Overview")
+        case .steamMini: "Steam"
+        case .nintendoMini: "Switch"
+        case .playStationMini: "PS"
         }
     }
 
