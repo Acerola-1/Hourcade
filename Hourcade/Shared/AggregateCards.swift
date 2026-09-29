@@ -393,13 +393,28 @@ private struct HeroNoValueCard: View {
                     Spacer(minLength: layout.sectionGap)
 
                     HStack(spacing: 0) {
-                        ForEach(snapshot.platforms) { activity in
-                            NoValuePlatformStat(activity: activity, totalPlayedMinutes: snapshot.totalPlayedMinutes, snapshot: snapshot)
-                                .frame(maxWidth: .infinity)
-                            FrostedTrayDivider()
+                        if snapshot.connectedPlatforms.isEmpty {
+                            Text(L10n.widget("Connect your gaming platforms"))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.82))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            ForEach(snapshot.connectedPlatforms) { activity in
+                                NoValuePlatformStat(activity: activity, totalPlayedMinutes: snapshot.totalPlayedMinutes, snapshot: snapshot)
+                                    .frame(maxWidth: .infinity)
+                                if activity.id != snapshot.connectedPlatforms.last?.id || snapshot.hasFortnightDataSource || snapshot.connectedPlatformCount == 1 {
+                                    FrostedTrayDivider()
+                                }
+                            }
+                            if snapshot.hasFortnightDataSource {
+                                FortnightTotalPanel(playedMinutes: snapshot.fortnightPlayedMinutes)
+                                    .frame(width: snapshot.connectedPlatformCount == 1 ? nil : 130)
+                                    .frame(maxWidth: snapshot.connectedPlatformCount == 1 ? .infinity : nil)
+                            } else if snapshot.connectedPlatformCount == 1 {
+                                SinglePlatformGamePanel(game: snapshot.recentGames.first, fallback: snapshot.allTimeTopGame)
+                                    .frame(maxWidth: .infinity)
+                            }
                         }
-                        FortnightTotalPanel(playedMinutes: snapshot.fortnightPlayedMinutes, isAvailable: snapshot.hasData)
-                            .frame(width: 130)
                     }
                     .frame(height: layout.trayHeight)
                     .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
@@ -543,7 +558,6 @@ private struct FrostedDot: View {
 
 private struct FortnightTotalPanel: View {
     let playedMinutes: Int
-    var isAvailable = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -556,7 +570,7 @@ private struct FortnightTotalPanel: View {
             .foregroundStyle(.white.opacity(0.80))
             .frame(height: 21)
 
-            Text(isAvailable ? playedMinutes.hoursMinutesLabel : "—")
+            Text(playedMinutes.hoursMinutesLabel)
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
@@ -564,7 +578,7 @@ private struct FortnightTotalPanel: View {
                 .frame(height: 19, alignment: .leading)
                 .padding(.top, 3)
 
-            Text(verbatim: "Steam · Switch")
+            Text(verbatim: "Steam")
                 .font(.system(size: 9))
                 .foregroundStyle(.white.opacity(0.65))
                 .frame(height: 12, alignment: .leading)
@@ -576,7 +590,26 @@ private struct FortnightTotalPanel: View {
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isAvailable ? L10n.widget("Played %1$@ in 14 days", playedMinutes.hoursMinutesLabel) + ", Steam · Switch" : L10n.widget("%1$@, %2$@", L10n.widget("LAST 14 DAYS"), L10n.widget("No play history")))
+        .accessibilityLabel(L10n.widget("Played %1$@ in 14 days", playedMinutes.hoursMinutesLabel) + ", Steam")
+    }
+}
+
+private struct SinglePlatformGamePanel: View {
+    let game: RecentGame?
+    let fallback: FeaturedGame
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(L10n.widget(game == nil ? "FEATURED GAME" : "Recently Played"))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.72))
+            Text(game?.title ?? (fallback.id == "empty" ? L10n.widget("No play history") : fallback.title))
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 }
 
@@ -602,11 +635,12 @@ private struct DataAggregateCard: View {
                 HStack(spacing: 16) {
                     PlaytimeRing(snapshot: snapshot)
                         .frame(width: 140, height: 140)
-                    // Fixed metrics column: the ring already carries the total,
-                    // so each row shows only platform mark + playtime + share,
-                    // sized to never truncate.
+                    // Center the connected rows beside the ring. One or two
+                    // accounts should read as a deliberate composition, not
+                    // as a three-row list with missing entries.
                     VStack(alignment: .leading, spacing: 13) {
-                        ForEach(snapshot.platforms) { activity in
+                        Spacer(minLength: 0)
+                        ForEach(snapshot.connectedPlatforms) { activity in
                             HStack(spacing: 8) {
                                 PlatformMark(platform: activity.platform, size: 19)
                                 VStack(alignment: .leading, spacing: 2) {
@@ -615,12 +649,19 @@ private struct DataAggregateCard: View {
                                         .monospacedDigit()
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.55)
-                                    Text(activity.isConnected ? L10n.widget("%1$d%%", Int((Double(activity.playedMinutes) / Double(max(snapshot.totalPlayedMinutes, 1)) * 100).rounded())) : L10n.widget("Not connected"))
+                                    Text(L10n.widget("%1$d%%", Int((Double(activity.playedMinutes) / Double(max(snapshot.totalPlayedMinutes, 1)) * 100).rounded())))
                                         .font(.system(size: 8))
                                         .foregroundStyle(.secondary)
                                 }
                             }
                         }
+                        if snapshot.connectedPlatforms.isEmpty {
+                            Text(L10n.widget("Connect your gaming platforms"))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
                     }
                     .frame(width: 118)
                     Rectangle().fill(WidgetPalette.ink.opacity(0.12)).frame(width: 1)
@@ -679,11 +720,11 @@ private struct DataAggregateCard: View {
                 }
 
                 HStack(spacing: 7) {
-                    ForEach(0..<6, id: \.self) { index in
-                        if index < previewGames.count {
-                            SmallCover(game: previewGames[index])
-                        } else {
-                            EmptyGameCover()
+                    if previewGames.isEmpty {
+                        EmptyGameCover()
+                    } else {
+                        ForEach(Array(previewGames.prefix(6).enumerated()), id: \.offset) { _, game in
+                            SmallCover(game: game, wide: previewGames.count <= 2)
                         }
                     }
                 }
@@ -706,7 +747,7 @@ private struct PlaytimeRing: View {
     var body: some View {
         ZStack {
             Circle().stroke(WidgetPalette.ink.opacity(0.08), lineWidth: 17)
-            ForEach(snapshot.platforms, id: \.platform) { activity in
+            ForEach(snapshot.connectedPlatforms, id: \.platform) { activity in
                 Circle()
                     .trim(from: start(for: activity.platform), to: end(for: activity.platform))
                     .stroke(WidgetPalette.color(for: activity.platform), lineWidth: 17)
@@ -739,9 +780,9 @@ private struct PlaytimeRing: View {
 
 private struct EmptyGameCover: View {
     var body: some View {
-        VStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: "gamecontroller")
-            Text(L10n.widget("No history")).font(.system(size: 9))
+            Text(L10n.widget("No play history")).font(.system(size: 10))
         }
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -773,11 +814,12 @@ private struct HeroRecentCover: View {
 private struct SmallCover: View {
     let game: RecentGame
     var recolor = false
+    var wide = false
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
-                GameArtwork(name: game.artworkName, role: .cover, maxPixelSize: 400)
+                GameArtwork(name: game.artworkName, role: wide ? .hero : .cover, maxPixelSize: wide ? 960 : 400)
                     .scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .hueRotation(.degrees(recolor ? 95 : 0))
@@ -822,7 +864,9 @@ private struct PlatformAggregateCard: View {
                     VStack(alignment: .leading, spacing: 13) {
                         MetricLine(icon: "clock", value: snapshot.playtimeLabel, label: L10n.widget("Total Playtime"))
                         MetricLine(icon: "gamecontroller", value: snapshot.hasData ? snapshot.totalGameCount.formatted(.number.locale(L10n.locale)) : "—", label: L10n.widget("Games"))
-                        MetricLine(icon: "calendar", value: snapshot.hasData ? snapshot.fortnightPlayedMinutes.hoursLabelRoundedUp : "—", label: L10n.widget("Last 14 Days"))
+                        if snapshot.hasFortnightDataSource {
+                            MetricLine(icon: "calendar", value: snapshot.fortnightPlayedMinutes.hoursLabelRoundedUp, label: L10n.widget("Last 14 Days"))
+                        }
                         Spacer(minLength: 0)
                         // Account-wide completion rollup — Steam achievements
                         // and PSN trophies stacked vertically so the numbers
@@ -871,9 +915,21 @@ private struct PlatformAggregateCard: View {
                     }
                     .frame(width: 145)
 
-                    ForEach(snapshot.platforms) { activity in
-                        PlatformPortrait(activity: activity, total: snapshot.totalPlayedMinutes, artworkName: snapshot.showcaseArtwork[activity.platform] ?? "")
-                            .frame(maxWidth: .infinity)
+                    if snapshot.connectedPlatforms.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "gamecontroller")
+                                .font(.system(size: 28, weight: .light))
+                            Text(L10n.widget("Connect your gaming platforms"))
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundStyle(.white.opacity(0.72))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 15))
+                    } else {
+                        ForEach(snapshot.connectedPlatforms) { activity in
+                            PlatformPortrait(activity: activity, total: snapshot.totalPlayedMinutes, artworkName: snapshot.showcaseArtwork[activity.platform] ?? "", usesWideArtwork: snapshot.connectedPlatformCount == 1)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                 }
             }
@@ -917,6 +973,7 @@ private struct PlatformPortrait: View {
     let activity: PlatformActivity
     let total: Int
     var artworkName: String? = nil
+    var usesWideArtwork = false
 
     private var artwork: String {
         if let artworkName { return artworkName }
@@ -930,7 +987,7 @@ private struct PlatformPortrait: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottomLeading) {
-                GameArtwork(name: artwork, role: .portrait, maxPixelSize: 600)
+                GameArtwork(name: artwork, role: usesWideArtwork ? .hero : .portrait, maxPixelSize: usesWideArtwork ? 960 : 600)
                     .scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
@@ -1152,10 +1209,6 @@ private struct GalleryCover: View {
 private struct MiniSummaryCard: View {
     let snapshot: GameSnapshot
 
-    private var connectedPlatforms: [PlatformActivity] {
-        snapshot.platforms.filter { $0.isConnected }
-    }
-
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
@@ -1201,9 +1254,24 @@ private struct MiniSummaryCard: View {
                 Spacer(minLength: 6)
 
                 HStack(spacing: 6) {
-                    ForEach(connectedPlatforms) { activity in
-                        MiniPlatformPill(activity: activity)
-                            .frame(maxWidth: .infinity)
+                    if snapshot.connectedPlatforms.isEmpty {
+                        Text(L10n.widget("Connect your gaming platforms"))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        if snapshot.connectedPlatformCount == 1 {
+                            Spacer(minLength: 0)
+                        }
+                        ForEach(snapshot.connectedPlatforms) { activity in
+                            MiniPlatformPill(activity: activity)
+                                .frame(width: snapshot.connectedPlatformCount == 1 ? min(width - 32, 170) : nil)
+                                .frame(maxWidth: snapshot.connectedPlatformCount == 1 ? nil : .infinity)
+                        }
+                        if snapshot.connectedPlatformCount == 1 {
+                            Spacer(minLength: 0)
+                        }
                     }
                 }
                 .frame(height: 30)
