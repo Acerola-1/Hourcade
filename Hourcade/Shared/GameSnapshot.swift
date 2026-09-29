@@ -264,8 +264,12 @@ struct GameSnapshot: Sendable {
     // app-side for the A2 card's activity panel. Row date is nil when unknown.
     var lastPlayedRows: [LastPlayedRow] = []
 
-    var connectedPlatformCount: Int { platforms.filter(\.isConnected).count }
+    var connectedPlatforms: [PlatformActivity] { platforms.filter(\.isConnected) }
+    var connectedPlatformCount: Int { connectedPlatforms.count }
     var hasData: Bool { connectedPlatformCount > 0 }
+    // The merged snapshot currently receives fortnight history from Steam.
+    // A connected PSN or Switch account alone must not imply recent-play data.
+    var hasFortnightDataSource: Bool { connectedPlatforms.contains { $0.platform == .steam } }
     var playtimeLabel: String { platforms.contains { $0.isConnected && $0.hasPlaytime } ? totalPlayedMinutes.hoursLabel : "—" }
     // Platforms actually contributing to the fortnight total; only Steam and
     // Nintendo expose recent-play data, PSN's API has none.

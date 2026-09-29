@@ -261,7 +261,11 @@ render_section() {
   echo ""
 }
 
-if [[ $HAS_CONTENT -eq 1 ]]; then
+if [[ ${#RAW_BLOCKS[@]} -gt 0 && ${#NEW_ITEMS[@]} -eq 0 && ${#FIX_ITEMS[@]} -eq 0 \
+   && ${#OPT_ITEMS[@]} -eq 0 && ${#CODE_ITEMS[@]} -eq 0 ]]; then
+  echo ">>> 原样写入发布说明到 ${NOTES_FILE}..."
+  printf '%s\n' "${RAW_BLOCKS[@]}" > "$NOTES_FILE"
+elif [[ $HAS_CONTENT -eq 1 ]]; then
   echo ">>> 写入发布说明到 ${NOTES_FILE}..."
   {
     echo "## 更新内容"
