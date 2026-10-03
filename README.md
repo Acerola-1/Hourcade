@@ -13,14 +13,18 @@ macOS 桌面小组件，把 Steam、Nintendo Switch 和 PlayStation 的游玩数
 - PlayStation：PSN 浏览器登录（OAuth），累计时长 + 账号级奖杯；单游戏奖杯按行懒加载
 - 启动即自动刷新所有已连接平台；任何一页都只读缓存，网络清扫在同步后后台执行
 
-**游戏价值（参考价值）**
+**游戏素材**
 
-- Steam 走商店 appdetails（国区优先、港服补缺，2.5s/次限速）；PSN 走匿名商店 GraphQL（chihiro 旧接口兜底）；Nintendo 走美区 eShop 价格（nsuid 映射来自社区 titledb，7 天缓存）
-- 查询区固定港服（库存覆盖 92%），展示货币固定人民币，按当日汇率（er-api，frankfurter 备用）折算；所有价格磁盘缓存 24 小时
+- Steam 下载 1920 宽幅英雄图与 600×900 竖版封面；Nintendo 优先使用港服 eShop 官方 1920×1080 横幅（titleId 重定向 → 商品页 JSON-LD），缺失时回退游玩记录方图；PSN 使用 gamelist 自带图片
+- 历史上的「游戏价值（参考价值）」价格功能已于 2026-10-03 整体移除，调查记录见 `docs/nintendo-eshop-banner-and-pricing.md`
 
 ## 系统要求
 
 - macOS 15 或更高版本
+
+## 开发验证
+
+运行 `bash scripts/check-hero-candidates.sh` 检查 A1 的混合平台优先级、PSN 近期日期排序、1–3 款数量、日期边界和空状态。检查直接编译共享快照模型，使用独立样例，不读取本机账号数据。
 
 ## 隐私
 

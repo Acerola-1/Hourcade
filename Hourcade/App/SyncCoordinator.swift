@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import ImageIO
 
 /// App-wide sync orchestration, shared by the main window, the menu bar, and
 /// the background scheduler. Holds the three platform snapshots in memory so
@@ -10,7 +11,7 @@ final class SyncCoordinator {
     static let shared = SyncCoordinator()
     private static let syncRecordsKey = "platformSyncRecords"
     private static let lastAutoAttemptKey = "lastAutomaticSyncAttempt"
-    private static let refreshInterval: TimeInterval = 3_600
+    private static let refreshInterval: TimeInterval = 1_800
     private static let retryInterval: TimeInterval = 900
 
     private init() {
@@ -40,15 +41,23 @@ final class SyncCoordinator {
         migrateNintendoSessionToken()
         do { try await saveWidgetSnapshots() } catch { steamError = .widgetWriteFailure(error) }
         let previousSteamDate = steamSnapshot?.syncedAt
+        let previousNintendoDate = nintendoSnapshot?.syncedAt
+        let previousPSNDate = psnSnapshot?.syncedAt
         await refreshIfStale()
         if let steamSnapshot, steamSnapshot.syncedAt == previousSteamDate {
             await SteamAPI.cacheArtwork(for: steamSnapshot)
-            reloadWidgets()
+        }
+        // A launch with still-fresh account data must also repair any missing
+        // Nintendo or PSN favorite artwork before requesting a new timeline.
+        if steamSnapshot?.syncedAt == previousSteamDate,
+           nintendoSnapshot?.syncedAt == previousNintendoDate,
+           psnSnapshot?.syncedAt == previousPSNDate {
+            await refreshWidgetArtwork()
         }
     }
 
     /// Called on launch, wake and activation. A failed platform can retry after
-    /// 15 minutes; successful snapshots are fetched again once an hour old.
+    /// 15 minutes; successful snapshots are fetched again once 30 minutes old.
     func refreshIfStale() async {
         guard !isSyncingAll else { return }
         let now = Date.now
@@ -119,9 +128,9 @@ final class SyncCoordinator {
     /// Downloads cover art so `GameArtwork` can render real images in widgets
     /// instead of gradients. Steam has its own richer pipeline
     /// (`SteamAPI.cacheArtwork`); this covers the Nintendo and PlayStation
-    /// CDNs, whose images are direct URLs. The A5/A6 walls and the M3/M4
-    /// backdrops surface each platform's top games, so cache every game that
-    /// can appear on them (walls' top eight plus the showcase backdrop).
+    /// CDNs, whose images are direct URLs. Cache wall games, PSN's latest
+    /// dated titles, and each platform's lifetime favorite. A1 can show titles
+    /// below the wall's top eight, including PSN games with unknown duration.
     private func cachePlatformArtwork() async {
         let merged = WidgetSnapshotStore.load()
         let walls = merged?.gameSnapshot.galleryWalls ?? [:]
@@ -129,26 +138,44 @@ final class SyncCoordinator {
         // Nintendo: upgrade to 1024 for better quality when available.
         if let nintendo = nintendoSnapshot {
             var seen = Set<String>()
-            let candidates = (walls[.nintendo] ?? []).prefix(8).compactMap { game -> (URL, String)? in
-                guard let source = nintendo.games.first(where: { $0.featuredGame.id == game.id }),
-                      !source.imageUri.isEmpty,
-                      var remote = URL(string: source.imageUri),
-                      seen.insert(game.id).inserted
+            let favorite = nintendo.games.max { $0.totalPlayTime < $1.totalPlayTime }?.featuredGame
+            let recent = merged?.gameSnapshot.recentHeroCandidates.filter { $0.platform == .nintendo } ?? []
+            let showcase = nintendo.games.first { $0.featuredGame.artworkName == showcases[.nintendo] }?.featuredGame
+            let visible = Array((walls[.nintendo] ?? []).prefix(8))
+                + [favorite, showcase].compactMap { $0 } + recent
+            let sources = visible.compactMap { game -> NintendoGame? in
+                guard seen.insert(game.id).inserted else { return nil }
+                return nintendo.games.first { $0.featuredGame.id == game.id }
+            }
+            let candidates = sources.compactMap { source -> (URL, String)? in
+                guard !source.imageUri.isEmpty,
+                      var remote = URL(string: source.imageUri)
                 else { return nil }
                 if remote.absoluteString.hasSuffix("_512"),
                    let hd = URL(string: remote.absoluteString.replacingOccurrences(of: "_512", with: "_1024")) {
                     remote = hd
                 }
-                return (remote, "nintendo-\(source.titleId ?? source.name)")
+                return (remote, source.featuredGame.artworkName)
             }
             for (remote, name) in candidates {
                 await downloadAndCache(remote, named: name)
+            }
+            if let directory = SteamWidgetStore.artworkDirectory {
+                await NintendoArtworkStore.shared.cache(
+                    titleIDs: sources.compactMap(\.titleId),
+                    artworkDirectory: directory
+                )
             }
         }
         // PlayStation: the gamelist API gives a direct image URL.
         if let psn = psnSnapshot {
             var seen = Set<String>()
-            let candidates = (walls[.playStation] ?? []).prefix(8).compactMap { game -> (URL, String)? in
+            let favorite = psn.library.games.filter(\.hasPlaytime)
+                .max { $0.lifetimeMinutes < $1.lifetimeMinutes }?.featuredGame
+            let recent = merged?.gameSnapshot.psnPlayedGames ?? []
+            let visible = Array((walls[.playStation] ?? []).prefix(8))
+                + [favorite].compactMap { $0 } + recent
+            let candidates = visible.compactMap { game -> (URL, String)? in
                 guard let source = psn.library.games.first(where: { $0.featuredGame.id == game.id }),
                       let remote = source.imageURL,
                       seen.insert(game.id).inserted
@@ -172,6 +199,11 @@ final class SyncCoordinator {
         }
     }
 
+    func refreshWidgetArtwork() async {
+        await cachePlatformArtwork()
+        reloadWidgets()
+    }
+
     private func downloadAndCache(_ remote: URL, named name: String) async {
         guard let destination = SteamWidgetStore.artworkURL(named: name),
               !FileManager.default.fileExists(atPath: destination.path)
@@ -181,7 +213,14 @@ final class SyncCoordinator {
         let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
         do {
-            let (data, _) = try await session.data(from: remote)
+            let (data, response) = try await session.data(from: remote)
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  data.count <= 8 * 1_024 * 1_024,
+                  let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 32
+                  ] as CFDictionary) != nil else { return }
             try FileManager.default.createDirectory(
                 at: destination.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -249,11 +288,7 @@ final class SyncCoordinator {
         await refreshNintendo()
         await refreshPlayStation()
         do { try await saveWidgetSnapshots() } catch { steamError = .widgetWriteFailure(error) }
-        refreshPrices()
-        Task { @MainActor in
-            await cachePlatformArtwork()
-            reloadWidgets()
-        }
+        Task { @MainActor in await refreshWidgetArtwork() }
     }
 
     private func refreshNintendo() async {
@@ -322,37 +357,11 @@ final class SyncCoordinator {
             if library.games.isEmpty {
                 steamError = .text("Steam 没有返回游戏。请检查个人资料的“游戏详情”隐私设置；改为公开会让其他人也能查看相关游戏信息")
             }
-            refreshPrices()
             return true
         } catch {
             steamError = .failure(error)
             updateSyncRecord(.steam, error: error)
             return false
-        }
-    }
-
-    /// Price sweeps run in the background after syncs; pages only ever read
-    /// the cached results. The stores themselves throttle to a 24h TTL.
-    /// Queries are pinned to the HK storefront (92% library coverage vs 57%
-    /// on CN) and every price converts to CNY at display time.
-    private func refreshPrices() {
-        let steamAppIDs = steamSnapshot?.library.games.map(\.id) ?? []
-        let nintendoTitleIds = nintendoSnapshot?.games.compactMap(\.titleId) ?? []
-        let psnTitles = (psnSnapshot?.library.games.compactMap { game -> (titleId: String, conceptId: String)? in
-            guard let conceptId = game.conceptId else { return nil }
-            return (game.id, conceptId)
-        }) ?? []
-        guard !steamAppIDs.isEmpty || !nintendoTitleIds.isEmpty || !psnTitles.isEmpty else { return }
-        let storefront = "en-hk"
-        let chihiroCountry = "HK/en"
-        Task.detached(priority: .utility) {
-            // Sweep 横跨几分钟；申请用户级活动避免后台 AppNap 冻结下载。
-            let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled], reason: "Hourcade price sweep")
-            defer { ProcessInfo.processInfo.endActivity(activity) }
-            async let steam: Void = SteamPriceStore.shared.sweep(appIDs: steamAppIDs)
-            async let nintendo: Void = NintendoPriceStore.shared.sweep(titleIds: nintendoTitleIds)
-            async let psn: Void = PSNPriceStore.shared.sweep(titles: psnTitles, storefront: storefront, chihiroCountry: chihiroCountry)
-            _ = await (steam, nintendo, psn)
         }
     }
 }

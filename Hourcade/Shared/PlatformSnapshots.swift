@@ -36,9 +36,6 @@ struct PSNGame: Identifiable, Codable, Sendable {
     let lastPlayed: String?
     var imageURL: URL? = nil
     var hasPlaytime = true
-    // The store concept id, used for one-hop price lookups. nil on snapshots
-    // saved before this field shipped (one re-sync fills it).
-    var conceptId: String? = nil
 
     var lastPlayedDate: Date? {
         guard let lastPlayed, !lastPlayed.isEmpty else { return nil }
@@ -46,7 +43,9 @@ struct PSNGame: Identifiable, Codable, Sendable {
     }
 
     var featuredGame: FeaturedGame {
-        FeaturedGame(id: "psn-" + id, title: name, platform: .playStation, artworkName: "psn-" + id, fortnightMinutes: 0, lifetimeMinutes: lifetimeMinutes)
+        FeaturedGame(id: "psn-" + id, title: name, platform: .playStation,
+                     artworkName: "psn-" + id, fortnightMinutes: 0,
+                     lifetimeMinutes: lifetimeMinutes, lastPlayedDate: lastPlayedDate)
     }
 }
 
@@ -110,8 +109,8 @@ struct NintendoGame: Codable, Identifiable, Sendable {
             id: "nintendo-" + id,
             title: name,
             platform: .nintendo,
-            artworkName: "nintendo-" + id,
-            fortnightMinutes: 0,
+            artworkName: "nintendo-" + (titleId?.lowercased() ?? name),
+            fortnightMinutes: fortnightMinutes,
             lifetimeMinutes: totalPlayTime
         )
     }
@@ -251,6 +250,18 @@ struct WidgetSnapshots: Codable, Sendable {
 
     var gameSnapshot: GameSnapshot {
         let steamData = steam?.gameSnapshot
+        let now = Date.now
+        // Recent PSN play does not require a known duration. Ignore invalid or
+        // future dates, then take the three latest dated titles from the library.
+        let psnPlayed = playStation?.library.games
+            .filter { $0.lastPlayedDate.map { $0 <= now } ?? false }
+            .sorted { lhs, rhs in
+                if lhs.lastPlayedDate != rhs.lastPlayedDate {
+                    return (lhs.lastPlayedDate ?? .distantPast) > (rhs.lastPlayedDate ?? .distantPast)
+                }
+                return lhs.id < rhs.id
+            }
+            .prefix(3).map(\.featuredGame) ?? []
         let nintendoFavorite = nintendo?.games.max { $0.totalPlayTime < $1.totalPlayTime }?.featuredGame
         let psnFavorite = playStation?.library.games.filter(\.hasPlaytime).max { $0.lifetimeMinutes < $1.lifetimeMinutes }?.featuredGame
         let favorites = [steamData?.allTimeTopGame, nintendoFavorite, psnFavorite].compactMap { $0 }.filter { $0.id != "empty" }
@@ -297,7 +308,8 @@ struct WidgetSnapshots: Codable, Sendable {
             playerName: steamData?.playerName ?? playStation?.library.onlineID ?? L10n.widget("Connect your gaming platforms"),
             platforms: platforms,
             recentGames: recentlyPlayedAcrossPlatforms,
-            fortnightGames: steamData?.fortnightGames ?? [],
+            fortnightGames: (steamData?.fortnightGames ?? [])
+                + (nintendo?.games.filter { $0.fortnightMinutes > 0 }.map(\.featuredGame) ?? []),
             allTimeTopGame: favorites.max { $0.lifetimeMinutes < $1.lifetimeMinutes } ?? .empty,
             totalGameCount: platforms.reduce(0) { $0 + $1.gameCount },
             updatedAt: [steam?.syncedAt, nintendo?.syncedAt, playStation?.syncedAt].compactMap { $0 }.max() ?? .distantPast,
@@ -314,7 +326,8 @@ struct WidgetSnapshots: Codable, Sendable {
             steamPlayingGame: steam?.library.player?.playingGame,
             steamLevel: steam?.library.player?.level,
             psnTrophyLevel: playStation?.library.trophies?.level,
-            lastPlayedRows: lastPlayed
+            lastPlayedRows: lastPlayed,
+            psnPlayedGames: psnPlayed
         )
     }
 }

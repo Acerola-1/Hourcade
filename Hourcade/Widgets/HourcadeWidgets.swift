@@ -20,20 +20,44 @@ struct AggregateProvider: TimelineProvider {
 
     func getSnapshot(in context: Context, completion: @escaping (AggregateEntry) -> Void) {
         let data = snapshot
-        completion(AggregateEntry(date: .now, snapshot: data, featuredGame: data.heroCandidates[0]))
+        let now = Date.now
+        let candidates = data.heroCandidates
+        let slot = Int(now.timeIntervalSince1970 / Self.entryStep)
+        completion(AggregateEntry(date: now, snapshot: data,
+                                  featuredGame: candidates[slot % candidates.count]))
     }
+
+    /// How long one timeline covers before WidgetKit asks for the next batch.
+    private static let batchInterval: TimeInterval = 30 * 60
+    /// Apple's recommended minimum spacing between timeline entries is about
+    /// five minutes; the system still decides when they appear on the desktop.
+    private static let entryStep: TimeInterval = 5 * 60
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AggregateEntry>) -> Void) {
         let data = snapshot
         let start = Date.now
-        let key = "featured.\(style.rawValue)"
-        let previous = L10n.defaults.string(forKey: key)
         let candidates = data.heroCandidates
-        let alternatives = candidates.filter { $0.id != previous }
-        let game = (alternatives.isEmpty ? candidates : alternatives).randomElement() ?? data.allTimeTopGame
-        L10n.defaults.set(game.id, forKey: key)
-        let entry = AggregateEntry(date: start, snapshot: data, featuredGame: game)
-        completion(Timeline(entries: [entry], policy: .after(start.addingTimeInterval(1800))))
+
+        // Only A1 renders the hero game. A pool of one has nothing to rotate.
+        guard style == .heroNoValue, candidates.count > 1 else {
+            let entry = AggregateEntry(date: start, snapshot: data, featuredGame: candidates[0])
+            completion(Timeline(entries: [entry], policy: .after(start.addingTimeInterval(Self.batchInterval))))
+            return
+        }
+
+        // Use absolute five-minute slots. An app-triggered reload during a
+        // batch keeps the currently scheduled game instead of treating a
+        // future entry as if it had already appeared on screen.
+        let firstSlot = Int(start.timeIntervalSince1970 / Self.entryStep)
+        let nextBoundary = Date(timeIntervalSince1970: Double(firstSlot + 1) * Self.entryStep)
+        let entryCount = Int(Self.batchInterval / Self.entryStep)
+        let entries = (0..<entryCount).map { index in
+            AggregateEntry(date: index == 0 ? start : nextBoundary.addingTimeInterval(Self.entryStep * Double(index - 1)),
+                           snapshot: data,
+                           featuredGame: candidates[(firstSlot + index) % candidates.count])
+        }
+        let reloadAt = nextBoundary.addingTimeInterval(Self.entryStep * Double(entryCount - 1))
+        completion(Timeline(entries: entries, policy: .after(reloadAt)))
     }
 }
 

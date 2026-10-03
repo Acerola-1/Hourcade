@@ -2,6 +2,8 @@
 
 更新日期：2026-09-26。此文件持续记录已验证结果、用户决定、调查证据和阻塞；以当前代码与 Git 状态为准，不把编译通过、离屏渲染或登录窗口可打开写成真实账号端到端通过。
 
+**2026-10-03 更新：价格体系已整体移除**（`SteamPriceStore` / `NintendoPriceStore` / `PSNPriceStore` / `ExchangeRateStore`、同步后的价格清扫、总览与平台页的「参考价值」展示、`pricesDidChange` 通知、`PSNGame.conceptId` 字段均已删除，eShop 宽图与 titleId 映射保留）。下文涉及「游戏价值」的章节仅作历史记录，与现状不符。
+
 ## 1. 当前状态与用户决定
 
 - 产品核心是 macOS 桌面聚合小组件，覆盖 Steam、Nintendo Switch、PlayStation；不做社区、商城或分享。

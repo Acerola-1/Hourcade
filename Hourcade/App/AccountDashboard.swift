@@ -124,7 +124,7 @@ struct ContentView: View {
                     coordinator.nintendoSnapshot = newSnapshot
                     coordinator.recordManualSuccess(.nintendo, at: newSnapshot.syncedAt)
                     try await SyncCoordinator.shared.saveWidgetSnapshots()
-                    NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+                    await SyncCoordinator.shared.refreshWidgetArtwork()
                 }
             case .playStation:
                 PSNSettingsView(snapshot: coordinator.psnSnapshot) { library in
@@ -133,7 +133,7 @@ struct ContentView: View {
                     coordinator.psnSnapshot = newSnapshot
                     coordinator.recordManualSuccess(.playStation, at: newSnapshot.syncedAt)
                     try await SyncCoordinator.shared.saveWidgetSnapshots()
-                    NotificationCenter.default.post(name: .pricesDidChange, object: nil)
+                    await SyncCoordinator.shared.refreshWidgetArtwork()
                 }
             case .general:
                 GeneralSettingsView()
@@ -155,83 +155,6 @@ struct ContentView: View {
             Text(page.title)
         }
         .tag(page)
-    }
-}
-
-/// 价格汇总的读取与格式化；只读缓存，任何调用都不会触发网络请求。
-/// 查询区固定港服（92% 库存覆盖 vs 国区 57%），展示货币固定人民币。
-@MainActor
-enum PriceValue {
-    private static let displayCurrency = "CNY"
-
-    static func steamText(snapshot: SteamSnapshot?) async -> String? {
-        guard let snapshot else { return nil }
-        guard let sum = await SteamPriceStore.shared.totalValue(appIDs: snapshot.library.games.map(\.id)),
-              let currency = sum.currency else { return nil }
-        return await formatted(sum.amount, from: currency, to: displayCurrency)
-    }
-
-    static func nintendoText(snapshot: NintendoSnapshot?) async -> String? {
-        guard let snapshot else { return nil }
-        guard let sum = await NintendoPriceStore.shared.totalValue(titleIds: snapshot.games.compactMap(\.titleId)),
-              let currency = sum.currency else { return nil }
-        return await formatted(sum.amount, from: currency, to: displayCurrency)
-    }
-
-    static func psnText(snapshot: PSNSnapshot?) async -> String? {
-        guard let snapshot else { return nil }
-        let titleIds = snapshot.library.games.map(\.id)
-        guard let sum = await PSNPriceStore.shared.totalValue(titleIds: titleIds),
-              let currency = sum.currency else { return nil }
-        return await formatted(sum.amount, from: currency, to: displayCurrency)
-    }
-
-    /// Overview aggregate: every priced platform contributes in its own query
-    /// currency, all converted to the display currency.
-    static func overviewText(steam: SteamSnapshot?, nintendo: NintendoSnapshot?, playStation: PSNSnapshot?) async -> String? {
-        var total = 0.0
-        var any = false
-        if let sum = await SteamPriceStore.shared.totalValue(appIDs: steam?.library.games.map(\.id) ?? []),
-           let currency = sum.currency {
-            any = true
-            if currency == displayCurrency {
-                total += sum.amount
-            } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: displayCurrency) {
-                total += sum.amount * rate
-            }
-        }
-        if let sum = await NintendoPriceStore.shared.totalValue(titleIds: nintendo?.games.compactMap(\.titleId) ?? []),
-           let currency = sum.currency {
-            any = true
-            if currency == displayCurrency {
-                total += sum.amount
-            } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: displayCurrency) {
-                total += sum.amount * rate
-            }
-        }
-        if let sum = await PSNPriceStore.shared.totalValue(titleIds: playStation?.library.games.map(\.id) ?? []),
-           let currency = sum.currency {
-            any = true
-            if currency == displayCurrency {
-                total += sum.amount
-            } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: displayCurrency) {
-                total += sum.amount * rate
-            }
-        }
-        guard any else { return nil }
-        return await formatted(total, from: displayCurrency, to: displayCurrency)
-    }
-
-    private static func formatted(_ amount: Double, from currency: String, to display: String) async -> String? {
-        let converted: Double
-        if currency == display {
-            converted = amount
-        } else if let rate = await ExchangeRateStore.shared.rate(from: currency, to: display) {
-            converted = amount * rate
-        } else {
-            return nil
-        }
-        return converted.formatted(.currency(code: display).presentation(.narrow))
     }
 }
 
