@@ -851,23 +851,6 @@
         }
       }
     },
-    "参考价值": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estimated value"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "参考价值"
-          }
-        }
-      }
-    },
     "取消": {
       "extractionState": "manual",
       "localizations": {

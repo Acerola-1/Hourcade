@@ -59,7 +59,7 @@ private struct MenuBarContent: View {
     }
 }
 
-/// Hourly data refresh while the app is running (menu bar or window).
+/// Approximately half-hourly data refresh while the app is running.
 /// NSBackgroundActivityScheduler cooperates with App Nap and sleep; each tick
 /// checks whether connected data is stale. The app process owns this schedule,
 /// independent of whether its window is open.
@@ -73,7 +73,7 @@ enum BackgroundSyncScheduler {
         guard activity == nil else { return }
         let scheduler = NSBackgroundActivityScheduler(identifier: "dev.acerola.Hourcade.sync")
         scheduler.repeats = true
-        scheduler.interval = 3_600
+        scheduler.interval = 1_800
         scheduler.qualityOfService = .utility
         scheduler.schedule { completion in
             Task { @MainActor in

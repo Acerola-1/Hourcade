@@ -200,6 +200,8 @@ struct FeaturedGame: Identifiable, Sendable {
     // PSN trophy progress (earned/defined) for this title; nil when untracked.
     var trophyEarned: Int? = nil
     var trophyDefined: Int? = nil
+    // PSN supplies a last-played date, but no playtime for the last 14 days.
+    var lastPlayedDate: Date? = nil
 
     static var empty: FeaturedGame {
         FeaturedGame(id: "empty", title: L10n.widget("No play history"), platform: .steam, artworkName: "", fortnightMinutes: 0, lifetimeMinutes: 0)
@@ -263,16 +265,18 @@ struct GameSnapshot: Sendable {
     // One "last played" row per connected platform, most recent first, prepared
     // app-side for the A2 card's activity panel. Row date is nil when unknown.
     var lastPlayedRows: [LastPlayedRow] = []
+    var psnPlayedGames: [FeaturedGame] = []
 
     var connectedPlatforms: [PlatformActivity] { platforms.filter(\.isConnected) }
     var connectedPlatformCount: Int { connectedPlatforms.count }
     var hasData: Bool { connectedPlatformCount > 0 }
-    // The merged snapshot currently receives fortnight history from Steam.
-    // A connected PSN or Switch account alone must not imply recent-play data.
-    var hasFortnightDataSource: Bool { connectedPlatforms.contains { $0.platform == .steam } }
+    // Steam and Nintendo provide recent-play minutes; PSN does not.
+    var hasFortnightDataSource: Bool {
+        connectedPlatforms.contains { $0.platform == .steam || $0.platform == .nintendo }
+    }
     var playtimeLabel: String { platforms.contains { $0.isConnected && $0.hasPlaytime } ? totalPlayedMinutes.hoursLabel : "—" }
     // Platforms actually contributing to the fortnight total; only Steam and
-    // Nintendo expose recent-play data, PSN's API has none.
+    // Nintendo expose period playtime; PSN's last-played date supplies no minutes.
     var recentPeriodTitle: String {
         let names = fortnightGames.filter { $0.fortnightMinutes > 0 }
             .map(\.platform)
@@ -300,17 +304,80 @@ struct GameSnapshot: Sendable {
         fortnightGames.reduce(0) { $0 + max($1.fortnightMinutes, 0) }
     }
 
-    var heroCandidates: [FeaturedGame] {
-        // The A1 hero pool follows the platform-page order (recent play →
-        // last played → lifetime) so the desktop widget's headline game always
-        // matches the wall/list ordering instead of a fortnight-only ranking.
-        if let wall = galleryWalls[.steam], !wall.isEmpty {
-            return Array(wall.prefix(5))
+    var recentHeroCandidates: [FeaturedGame] {
+        recentHeroCandidates(at: .now)
+    }
+
+    func recentHeroCandidates(at now: Date) -> [FeaturedGame] {
+        let cutoff = now.addingTimeInterval(-14 * 86_400)
+        let psn = psnGamesPlayed(at: now, since: cutoff)
+        let connected = Set(connectedPlatforms.map(\.platform))
+        var seenPrimary = Set<String>()
+        let ranked = fortnightGames
+            .filter { connected.contains($0.platform) && $0.platform != .playStation && $0.fortnightMinutes > 0 }
+            .sorted { lhs, rhs in
+                if lhs.fortnightMinutes != rhs.fortnightMinutes {
+                    return lhs.fortnightMinutes > rhs.fortnightMinutes
+                }
+                if lhs.lifetimeMinutes != rhs.lifetimeMinutes {
+                    return lhs.lifetimeMinutes > rhs.lifetimeMinutes
+                }
+                return lhs.id < rhs.id
+            }
+            .filter { seenPrimary.insert("\($0.platform.rawValue):\($0.id)").inserted }
+        // With PSN as the only recent platform, show its latest titles in date
+        // order. In a mixed pool it contributes only the most recent title.
+        if ranked.isEmpty { return Array(psn.prefix(3)) }
+        // PSN reserves the last available position, without comparing its
+        // lifetime minutes to the other platforms' recent-play minutes.
+        return Array(ranked.prefix(psn.isEmpty ? 3 : 2)) + Array(psn.prefix(1))
+    }
+
+    private func psnGamesPlayed(at now: Date, since cutoff: Date? = nil) -> [FeaturedGame] {
+        guard connectedPlatforms.contains(where: { $0.platform == .playStation }) else { return [] }
+        var seen = Set<String>()
+        return psnPlayedGames
+            .filter { game in
+                guard game.platform == .playStation,
+                      let date = game.lastPlayedDate else { return false }
+                return date <= now && (cutoff.map { date >= $0 } ?? true)
+            }
+            .sorted { lhs, rhs in
+                if lhs.lastPlayedDate != rhs.lastPlayedDate {
+                    return (lhs.lastPlayedDate ?? .distantPast) > (rhs.lastPlayedDate ?? .distantPast)
+                }
+                return lhs.id < rhs.id
+            }
+            .filter { seen.insert($0.id).inserted }
+    }
+
+    var hasRecentHeroGames: Bool { !recentHeroCandidates.isEmpty }
+
+    // With no recent play, give each connected platform one background. PSN
+    // always uses its last-played date; Steam and Nintendo use lifetime playtime.
+    var backgroundHeroCandidates: [FeaturedGame] {
+        let psn = psnGamesPlayed(at: .now).first
+        return connectedPlatforms.compactMap { activity in
+            if activity.platform == .playStation { return psn }
+            return galleryWalls[activity.platform]?
+                .filter { $0.lifetimeMinutes > 0 }
+                .max { $0.lifetimeMinutes < $1.lifetimeMinutes }
+                ?? platformHighlights.first {
+                    $0.platform == activity.platform && $0.lifetimeMinutes > 0
+                }
         }
-        let active = fortnightGames
-            .filter { $0.fortnightMinutes > 0 }
-            .sorted { $0.fortnightMinutes > $1.fortnightMinutes }
-        return active.isEmpty ? [allTimeTopGame] : Array(active.prefix(5))
+    }
+
+    var heroCandidates: [FeaturedGame] {
+        let recent = recentHeroCandidates
+        if !recent.isEmpty { return recent }
+        let backgrounds = backgroundHeroCandidates
+        return backgrounds.isEmpty ? [.empty] : backgrounds
+    }
+
+    var fortnightSourceLabel: String {
+        fortnightGames.filter { $0.fortnightMinutes > 0 }
+            .map(\.platform).uniqued().map(\.title).joined(separator: " / ")
     }
 }
 

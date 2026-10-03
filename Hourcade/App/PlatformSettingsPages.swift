@@ -5,7 +5,6 @@ struct SteamSettingsView: View {
     @State private var account = UserDefaults.standard.string(forKey: "steam.account") ?? ""
     @State private var apiKey = ""
     @State private var isEditing = KeychainSecret.read("steam.apiKey") == nil
-    @State private var priceValue: String?
 
     let snapshot: SteamSnapshot?
     let isRefreshing: Bool
@@ -56,15 +55,10 @@ struct SteamSettingsView: View {
                         .init(value: snapshot.library.player?.level.map { L10n.format("Lv.%lld", $0) } ?? "—", label: L10n.tr("等级")),
                         .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
-                        .init(value: priceValue ?? "—", label: L10n.tr("参考价值")),
                     ])
                     SteamGameList(games: snapshot.library.games, steamID: snapshot.library.player?.steamID, key: KeychainSecret.read("steam.apiKey") ?? "")
                     DisclosureGroup(L10n.tr("查看连接说明")) { connectionGuide }
                         .padding(.horizontal, 4)
-                }
-                .task { priceValue = await PriceValue.steamText(snapshot: snapshot) }
-                .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
-                    Task { priceValue = await PriceValue.steamText(snapshot: snapshot) }
                 }
             } else {
                 connectionGuide
@@ -145,7 +139,6 @@ struct NintendoSettingsView: View {
     @Environment(\.locale) private var locale
     @State private var status: AccountMessage?
     @State private var isLoading = false
-    @State private var priceValue: String?
     let snapshot: NintendoSnapshot?
     let onSynced: (NintendoSnapshot) async throws -> Void
 
@@ -192,13 +185,8 @@ struct NintendoSettingsView: View {
                     StatsRow(stats: [
                         .init(value: DisplayFormat.totalHours(snapshot.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.games.count)", label: L10n.tr("游戏数量")),
-                        .init(value: priceValue ?? "—", label: L10n.tr("参考价值")),
                     ])
                     NintendoGameList(games: snapshot.games)
-                }
-                .task { priceValue = await PriceValue.nintendoText(snapshot: snapshot) }
-                .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
-                    Task { priceValue = await PriceValue.nintendoText(snapshot: snapshot) }
                 }
             } else {
                 SettingsPanel(title: L10n.tr("连接账号")) {
@@ -258,7 +246,6 @@ struct PSNSettingsView: View {
     @Environment(\.locale) private var locale
     @State private var status: AccountMessage?
     @State private var isLoading = false
-    @State private var priceValue: String?
     let snapshot: PSNSnapshot?
     let onSynced: (PSNLibrary) async throws -> Void
 
@@ -308,16 +295,11 @@ struct PSNSettingsView: View {
                         .init(value: DisplayFormat.totalHours(snapshot.library.totalMinutes), label: L10n.tr("总时长")),
                         .init(value: "\(snapshot.library.games.count)", label: L10n.tr("游戏数量")),
                         .init(value: completionRate, label: L10n.tr("完成率")),
-                        .init(value: priceValue ?? "—", label: L10n.tr("参考价值")),
                     ])
                     if let counts = snapshot.library.trophies?.earned {
                         TrophyCountRow(counts: counts)
                     }
                     PSNGameList(games: snapshot.library.games)
-                }
-                .task { priceValue = await PriceValue.psnText(snapshot: snapshot) }
-                .onReceive(NotificationCenter.default.publisher(for: .pricesDidChange)) { _ in
-                    Task { priceValue = await PriceValue.psnText(snapshot: snapshot) }
                 }
             } else {
                 SettingsPanel(title: L10n.tr("连接账号")) {
