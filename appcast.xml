@@ -3,10 +3,10 @@
     <channel>
         <title>Hourcade</title>
         <item>
-            <title>1.3.5</title>
-            <pubDate>Sat, 03 Oct 2026 05:27:47 +0000</pubDate>
-            <sparkle:version>6</sparkle:version>
-            <sparkle:shortVersionString>1.3.5</sparkle:shortVersionString>
+            <title>1.4.0</title>
+            <pubDate>Tue, 20 Oct 2026 11:39:00 +0000</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,sans-serif;font-size:13px;line-height:1.5;padding:8px;}pre{white-space:pre-wrap;}</style></head><body><pre>
@@ -14,21 +14,19 @@
 
 ### 新功能
 
-- Nintendo 游戏接入港服 eShop 官方 1920×1080 宽幅横幅，未上架作品回退方图模糊延展构图
+- A1 总览组件改为数据主导布局：移除品牌标题，突出当前背景游戏的累计游玩时间，并以胶囊展示近 14 天游玩时长。
 
 ### 优化与体验
 
-- A1「总览」组件背景改为约五分钟一轮的槽位轮播
-- A1 英雄候选改为近期游玩优先，无近期记录时按各平台生涯最常玩兜底
-- 移除「参考价值」展示与全部价格、汇率后台查询
+- A1 左侧统计与右侧最近游玩卡片底边对齐，并统一距底部平台栏 14pt；中文四位数不再显示千位分隔符。
 
 ### 代码质量
 
-- 新增 Nintendo 宽图与英雄候选场景校验脚本
+- 移除 A1 布局实验变体与演示启动代码。
 
 </pre></body></html>
 ]]></description>
-            <enclosure url="https://github.com/Acerola-1/Hourcade/releases/download/v1.3.5/Hourcade-v1.3.5.zip" length="20134140" type="application/octet-stream" sparkle:edSignature="9SlLI7HC5lFnYw8+16vd4sjTQoP1MhPQo5oqbktwJzF4GpCGO/bB7dw8rjoqZpk79knne785fznzbX2ypm+iDA=="/>
+            <enclosure url="https://github.com/Acerola-1/Hourcade/releases/download/v1.4.0/Hourcade-v1.4.0.zip" length="20136078" type="application/octet-stream" sparkle:edSignature="D5qXvVC6PC2SJ3jeeYU2oqqJB+AZQvz5tZYNP0ullEEvdO9g8/SCjS4VFuAro9tflJm4ybVRflN8yRL4cFyLAQ=="/>
         </item>
     </channel>
 </rss>
