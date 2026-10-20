@@ -45,7 +45,8 @@ struct PSNGame: Identifiable, Codable, Sendable {
     var featuredGame: FeaturedGame {
         FeaturedGame(id: "psn-" + id, title: name, platform: .playStation,
                      artworkName: "psn-" + id, fortnightMinutes: 0,
-                     lifetimeMinutes: lifetimeMinutes, lastPlayedDate: lastPlayedDate)
+                     lifetimeMinutes: lifetimeMinutes, lastPlayedDate: lastPlayedDate,
+                     hasPlaytime: hasPlaytime)
     }
 }
 

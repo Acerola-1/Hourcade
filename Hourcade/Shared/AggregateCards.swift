@@ -291,61 +291,30 @@ private struct HeroGlassBackdrop: View {
     }
 }
 
-private struct CompactFeaturedGameSummary: View {
-    let featuredGame: FeaturedGame
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(L10n.widget("FROM YOUR LAST 14 DAYS"))
-                .font(.system(size: 9, weight: .medium))
-                .tracking(0.4)
-                .foregroundStyle(.white.opacity(0.72))
-            Text(featuredGame.title)
-                .font(.system(size: 17, weight: .semibold))
-            HStack(spacing: 6) {
-                PlatformBrandLogo(platform: featuredGame.platform, size: 23)
-                Group {
-                    if featuredGame.platform == .playStation {
-                        Text(L10n.widget("Last played") + " · " + RelativeTime.text(for: featuredGame.lastPlayedDate))
-                    } else {
-                        Text(L10n.widget("%1$@ in 14 days", featuredGame.fortnightMinutes.hoursMinutesLabel))
-                    }
-                }
-                .font(.system(size: 9))
-                .foregroundStyle(.white.opacity(0.78))
-            }
-        }
-        .lineLimit(1)
-        .accessibilityElement(children: .combine)
-    }
-}
-
 /// A1: the hero composition keeps its metrics and platform tray while its
 /// recent-play card contracts from three titles to one, then vanishes at zero.
 private struct HeroCardLayout {
     let verticalInset: CGFloat
     let coverHeight: CGFloat
-    let featuredHeight: CGFloat
     let trayHeight: CGFloat
-    let sectionGap: CGFloat
     let panelSpacing: CGFloat
     let panelPadding: CGFloat
+    /// Uniform gap between the A1 data layout's bottom-aligned content and
+    /// the platform tray.
+    let contentBottomGap: CGFloat
 
     init(height: CGFloat) {
+        contentBottomGap = 14
         if height < 390 {
             verticalInset = height < 336 ? 10 : 14
             coverHeight = min(62, max(50, height - 282))
-            featuredHeight = coverHeight + 110
             trayHeight = 78
-            sectionGap = 0
             panelSpacing = 4
             panelPadding = 8
         } else {
             verticalInset = 18
             coverHeight = 70
-            featuredHeight = max(186, height - 202)
             trayHeight = 82
-            sectionGap = 12
             panelSpacing = 6
             panelPadding = 10
         }
@@ -357,110 +326,176 @@ private struct HeroNoValueCard: View {
     let featuredGame: FeaturedGame
     let showsBackdrop: Bool
 
+    private let panelWidth: CGFloat = 228
+
     var body: some View {
         let recentGames = snapshot.recentHeroCandidates
         GeometryReader { geometry in
             let layout = HeroCardLayout(height: geometry.size.height)
-            let metricWidth = max(0, geometry.size.width - 18 * 2 - 228 - 26)
+            let metricWidth = max(0, geometry.size.width - 18 * 2 - panelWidth - 26)
             ZStack {
                 if showsBackdrop {
                     HeroArtworkBackdrop(featuredGame: featuredGame, size: geometry.size)
                 }
-
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .top, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(L10n.widget("Game Life"))
-                                .font(.system(size: 32, weight: .medium, design: .rounded))
-                            Text(L10n.widget("Play more. Live better."))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.76))
-                        }
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        Spacer(minLength: 0)
-                        SyncStatus(updatedAt: snapshot.hasData ? snapshot.updatedAt : nil)
-                    }
-
-                    Spacer(minLength: layout.sectionGap)
-
-                    HStack(alignment: .bottom, spacing: 26) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(L10n.widget("Total Playtime"))
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.78))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                            Text(snapshot.playtimeLabel)
-                                .font(.system(size: 44, weight: .medium, design: .rounded))
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.6)
-                        }
-                        .frame(width: metricWidth, alignment: .leading)
-                        if !recentGames.isEmpty {
-                            VStack(alignment: .leading, spacing: layout.panelSpacing) {
-                                CompactFeaturedGameSummary(featuredGame: featuredGame)
-
-                                if recentGames.count > 1 {
-                                    Text(L10n.widget("Recently Played"))
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.80))
-
-                                    HStack(spacing: 8) {
-                                        ForEach(recentGames) { game in
-                                            HeroRecentCover(game: game,
-                                                            isFeatured: game.id == featuredGame.id && game.platform == featuredGame.platform)
-                                                .frame(width: recentGames.count == 2 ? 92 : 64,
-                                                       height: layout.coverHeight)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                }
-                            }
-                            .padding(layout.panelPadding)
-                            .frame(width: 228,
-                                   height: recentGames.count == 1 ? 92 : layout.featuredHeight,
-                                   alignment: .bottomLeading)
-                            .background(HeroGlassBackdrop(featuredGame: featuredGame,
-                                                          canvasSize: geometry.size, cornerRadius: 18))
-                        }
-                    }
-
-                    Spacer(minLength: layout.sectionGap)
-
-                    HStack(spacing: 0) {
-                        if snapshot.connectedPlatforms.isEmpty {
-                            Text(L10n.widget("Connect your gaming platforms"))
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.82))
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            ForEach(snapshot.connectedPlatforms) { activity in
-                                NoValuePlatformStat(activity: activity, totalPlayedMinutes: snapshot.totalPlayedMinutes, snapshot: snapshot)
-                                    .frame(maxWidth: .infinity)
-                                if activity.id != snapshot.connectedPlatforms.last?.id || snapshot.fortnightPlayedMinutes > 0 {
-                                    FrostedTrayDivider()
-                                }
-                            }
-                            if snapshot.fortnightPlayedMinutes > 0 {
-                                FortnightTotalPanel(playedMinutes: snapshot.fortnightPlayedMinutes,
-                                                   sourceLabel: snapshot.fortnightSourceLabel)
-                                    .frame(width: snapshot.connectedPlatformCount == 1 ? nil : 130)
-                                    .frame(maxWidth: snapshot.connectedPlatformCount == 1 ? .infinity : nil)
-                            }
-                        }
-                    }
-                    .frame(height: layout.trayHeight)
-                    .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: geometry.size, cornerRadius: 18))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, layout.verticalInset)
+                dataLayout(geometry: geometry, layout: layout,
+                           metricWidth: metricWidth, recentGames: recentGames)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, layout.verticalInset)
             }
             .coordinateSpace(name: heroNoValueCoordinateSpace)
         }
         .environment(\.colorScheme, .dark)
+    }
+
+    // MARK: Final data-led layout
+
+    private func dataLayout(geometry: GeometryProxy, layout: HeroCardLayout,
+                            metricWidth: CGFloat, recentGames: [FeaturedGame]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    platformTag
+                    Text(featuredGame.title)
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                }
+                .frame(width: metricWidth, alignment: .leading)
+                Spacer(minLength: 0)
+                syncStatus
+            }
+
+            Spacer(minLength: 10)
+
+            HStack(alignment: .bottom, spacing: 26) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(featuredGame.playtimeLabel)
+                        .font(.system(size: 58, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                    if let recent {
+                        HStack(alignment: .center, spacing: 7) {
+                            Text(recent.label)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.66))
+                            Rectangle()
+                                .fill(.white.opacity(0.16))
+                                .frame(width: 1, height: 11)
+                            Text(recent.value)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(.white.opacity(0.92))
+                        }
+                        .lineLimit(1)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(.white.opacity(0.075), in: Capsule())
+                    }
+                }
+                .frame(width: metricWidth, alignment: .leading)
+                if !recentGames.isEmpty {
+                    recentPanel(recentGames: recentGames, layout: layout, canvasSize: geometry.size)
+                }
+            }
+
+            Color.clear.frame(height: layout.contentBottomGap)
+            tray(layout: layout, canvasSize: geometry.size)
+        }
+    }
+
+    // MARK: Shared pieces
+
+    private var syncStatus: some View {
+        SyncStatus(updatedAt: snapshot.hasData ? snapshot.updatedAt : nil)
+    }
+
+    private func recentPanel(recentGames: [FeaturedGame], layout: HeroCardLayout,
+                             canvasSize: CGSize) -> some View {
+        HeroRecentPanel(featuredGame: featuredGame, recentGames: recentGames, layout: layout)
+            .padding(layout.panelPadding)
+            .frame(width: panelWidth, alignment: .bottomLeading)
+            .background(HeroGlassBackdrop(featuredGame: featuredGame,
+                                          canvasSize: canvasSize, cornerRadius: 18))
+    }
+
+    private func tray(layout: HeroCardLayout, canvasSize: CGSize) -> some View {
+        HStack(spacing: 0) {
+            if snapshot.connectedPlatforms.isEmpty {
+                Text(L10n.widget("Connect your gaming platforms"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ForEach(snapshot.connectedPlatforms) { activity in
+                    NoValuePlatformStat(activity: activity, totalPlayedMinutes: snapshot.totalPlayedMinutes, snapshot: snapshot)
+                        .frame(maxWidth: .infinity)
+                    if activity.id != snapshot.connectedPlatforms.last?.id || snapshot.fortnightPlayedMinutes > 0 {
+                        FrostedTrayDivider()
+                    }
+                }
+                if snapshot.fortnightPlayedMinutes > 0 {
+                    FortnightTotalPanel(playedMinutes: snapshot.fortnightPlayedMinutes,
+                                       sourceLabel: snapshot.fortnightSourceLabel)
+                        .frame(width: snapshot.connectedPlatformCount == 1 ? nil : 130)
+                        .frame(maxWidth: snapshot.connectedPlatformCount == 1 ? .infinity : nil)
+                }
+            }
+        }
+        .frame(height: layout.trayHeight)
+        .background(HeroGlassBackdrop(featuredGame: featuredGame, canvasSize: canvasSize, cornerRadius: 18))
+    }
+
+    private var platformTag: some View {
+        HStack(spacing: 7) {
+            PlatformBrandLogo(platform: featuredGame.platform, size: 16)
+            Text(featuredGame.platform.title)
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.8)
+                .textCase(.uppercase)
+                .foregroundStyle(.white.opacity(0.70))
+        }
+    }
+
+    private var recent: (label: String, value: String)? {
+        if featuredGame.platform == .playStation {
+            guard let date = featuredGame.lastPlayedDate else { return nil }
+            return (L10n.widget("Last played"), RelativeTime.text(for: date))
+        }
+        guard featuredGame.fortnightMinutes > 0 else { return nil }
+        return (L10n.widget("Last 14 Days"), featuredGame.fortnightMinutes.hoursMinutesLabel)
+    }
+}
+
+/// A1's right glass panel: one "Recently Played" line and the cover shelf,
+/// both starting on the same left edge. Its height is the content height, so
+/// no empty header space remains.
+private struct HeroRecentPanel: View {
+    let featuredGame: FeaturedGame
+    let recentGames: [FeaturedGame]
+    let layout: HeroCardLayout
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: layout.panelSpacing) {
+            Text(L10n.widget("Recently Played"))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.80))
+            covers(height: recentGames.count == 1 ? layout.coverHeight + 22 : layout.coverHeight + 8)
+        }
+    }
+
+    private func covers(height: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            ForEach(recentGames) { game in
+                HeroRecentCover(game: game,
+                                isFeatured: game.id == featuredGame.id && game.platform == featuredGame.platform)
+                    .frame(width: recentGames.count == 2 ? 92 : (recentGames.count == 1 ? 92 : 64),
+                           height: height)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -522,7 +557,7 @@ private struct NoValuePlatformStat: View {
     }
 
     private var gameCountText: Text {
-        Text(L10n.widget("%1$@ games", activity.gameCount.formatted(.number.locale(L10n.locale))))
+        Text(L10n.widget("%1$@ games", activity.gameCount.localizedGrouped))
     }
 
     @ViewBuilder
@@ -561,7 +596,7 @@ private struct NoValuePlatformStat: View {
                     if snapshot.platformProgress.steamTotal > 0 {
                         HStack(spacing: 3) {
                             Image(systemName: "rosette")
-                            Text(snapshot.platformProgress.steamEarned.formatted(.number.locale(L10n.locale)))
+                            Text(snapshot.platformProgress.steamEarned.localizedGrouped)
                                 .monospacedDigit()
                         }
                     }
@@ -569,7 +604,7 @@ private struct NoValuePlatformStat: View {
                     if snapshot.platformProgress.trophyDefined > 0 {
                         HStack(spacing: 3) {
                             Image(systemName: "trophy.fill")
-                            Text(snapshot.platformProgress.trophyEarned.formatted(.number.locale(L10n.locale)))
+                            Text(snapshot.platformProgress.trophyEarned.localizedGrouped)
                                 .monospacedDigit()
                         }
                     }
@@ -885,7 +920,7 @@ private struct PlatformAggregateCard: View {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 13) {
                         MetricLine(icon: "clock", value: snapshot.playtimeLabel, label: L10n.widget("Total Playtime"))
-                        MetricLine(icon: "gamecontroller", value: snapshot.hasData ? snapshot.totalGameCount.formatted(.number.locale(L10n.locale)) : "—", label: L10n.widget("Games"))
+                        MetricLine(icon: "gamecontroller", value: snapshot.hasData ? snapshot.totalGameCount.localizedGrouped : "—", label: L10n.widget("Games"))
                         if snapshot.hasFortnightDataSource {
                             MetricLine(icon: "calendar", value: snapshot.fortnightPlayedMinutes.hoursLabelRoundedUp, label: L10n.widget("Last 14 Days"))
                         }
@@ -1260,7 +1295,7 @@ private struct MiniSummaryCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(snapshot.hasData ? snapshot.totalGameCount.formatted(.number.locale(L10n.locale)) : "—")
+                        Text(snapshot.hasData ? snapshot.totalGameCount.localizedGrouped : "—")
                             .font(.system(size: 30, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                         Text(L10n.widget("Games"))

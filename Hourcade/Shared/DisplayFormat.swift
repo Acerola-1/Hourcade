@@ -19,9 +19,14 @@ enum DisplayFormat {
     }
 
     /// Stat-card hours with a decimal and locale grouping: 1,300.6 小时.
+    /// Chinese drops the separator for four-digit values.
     static func totalHours(_ minutes: Int) -> String {
         let hours = Double(minutes) / 60
-        return hours.formatted(.number.locale(L10n.locale).precision(.fractionLength(1))) + " " + L10n.tr("小时")
+        let suppress = L10n.locale.identifier.hasPrefix("zh") && abs(hours) < 10_000
+        return hours.formatted(.number
+            .locale(L10n.locale)
+            .precision(.fractionLength(1))
+            .grouping(suppress ? .never : .automatic)) + " " + L10n.tr("小时")
     }
 
     static func relative(_ date: Date?) -> String {
