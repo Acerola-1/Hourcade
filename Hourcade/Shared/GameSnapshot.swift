@@ -171,7 +171,7 @@ struct PlatformActivity: Identifiable, Sendable {
 
     var id: GamePlatform { platform }
     var playtimeLabel: String { isConnected && hasPlaytime ? playedMinutes.hoursLabel : "—" }
-    var gameCountLabel: String { isConnected ? gameCount.formatted() : "—" }
+    var gameCountLabel: String { isConnected ? gameCount.localizedGrouped : "—" }
 
     static func disconnected(_ platform: GamePlatform) -> PlatformActivity {
         PlatformActivity(platform: platform, playedMinutes: 0, gameCount: 0, isConnected: false)
@@ -202,9 +202,19 @@ struct FeaturedGame: Identifiable, Sendable {
     var trophyDefined: Int? = nil
     // PSN supplies a last-played date, but no playtime for the last 14 days.
     var lastPlayedDate: Date? = nil
+    // False when the platform knows the title but not its minutes (PSN omits
+    // `playDuration` for some titles). Keeps "unknown" from rendering as "0h".
+    var hasPlaytime: Bool = true
+
+    /// A1's headline: this title's own lifetime playtime. Ceiling-rounded so a
+    /// fresh sub-hour session never reads as an ugly "0h".
+    var playtimeLabel: String {
+        guard hasPlaytime else { return "—" }
+        return lifetimeMinutes > 0 ? lifetimeMinutes.hoursLabelRoundedUp : 0.hoursLabel
+    }
 
     static var empty: FeaturedGame {
-        FeaturedGame(id: "empty", title: L10n.widget("No play history"), platform: .steam, artworkName: "", fortnightMinutes: 0, lifetimeMinutes: 0)
+        FeaturedGame(id: "empty", title: L10n.widget("No play history"), platform: .steam, artworkName: "", fortnightMinutes: 0, lifetimeMinutes: 0, hasPlaytime: false)
     }
 }
 
@@ -401,12 +411,20 @@ enum RelativeTime {
 }
 
 extension Int {
-    var hoursLabel: String { L10n.widget("%@h", (self / 60).formatted(.number.locale(L10n.locale))) }
+    /// Chinese convention: four-digit values (1000–9999) are written without a
+    /// thousands separator ("4175 小时", not "4,175 小时"). Larger values keep
+    /// grouping, and other languages are untouched.
+    var localizedGrouped: String {
+        let suppress = L10n.locale.identifier.hasPrefix("zh") && abs(self) < 10_000
+        return formatted(.number.locale(L10n.locale).grouping(suppress ? .never : .automatic))
+    }
+
+    var hoursLabel: String { L10n.widget("%@h", (self / 60).localizedGrouped) }
     // Ceiling variant for short periods: any playtime under an hour still
     // reads as "1h" instead of an ugly "0h".
     var hoursLabelRoundedUp: String {
         guard self > 0 else { return "0" }
-        return L10n.widget("%@h", ((self + 59) / 60).formatted(.number.locale(L10n.locale)))
+        return L10n.widget("%@h", ((self + 59) / 60).localizedGrouped)
     }
     var hoursMinutesLabel: String { L10n.widget("%dh %dm", self / 60, self % 60) }
 }
